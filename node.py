@@ -35,22 +35,3 @@ class Node:
             f"Node(id={self.id}, type ={self.node_type},"
             f"contents={self.contents!r}, children={[c.id for c in self.children]})"
         )
-
-
-
-if __name__ == "__main__":
-    # Small sanity check: ASSIGN -> USER-DEFINED-NAME = TERM
-    # matching the example from the design doc.
-    assign = Node("ASSIGN", "inner")
-    name_leaf = Node("#x", "leaf")
-    eq_leaf = Node("=", "leaf")
-    term_node = Node("TERM", "inner")
- 
-    assign.add_child(name_leaf)
-    assign.add_child(eq_leaf)
-    assign.add_child(term_node)
- 
-    print(assign)
-    print(name_leaf)
-    print(eq_leaf)
-    print(term_node)
