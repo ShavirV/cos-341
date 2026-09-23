@@ -85,9 +85,9 @@ def first_of_sequence(seq, first):
         if EPS not in first[sym]:
             nullable = False
             break
-        if nullable:
-            result.add(EPS)
-        return result
+    if nullable:
+        result.add(EPS)
+    return result
 
 # step 2, compute the follow sets
 
