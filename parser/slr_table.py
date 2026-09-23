@@ -113,5 +113,50 @@ def compute_follow(first):
                     changed = True
     return follow
 
+# step 3, construct the LR(0) automaton
+
+def closure(items):
+    """
+    Closure of the passed in item set
+    items are defined as a set of (prod_index, dot_pos)
+    
+    cheapest way to iterate over everything since we already have the grammar in plain text
+    """
+    # closure(i) contains i 
+    items = set(items)
+    changed = True
+    while changed:
+        changed = False
+        new_items = set()
+        # split at dot and analyse 
+        for (i, dot) in items:
+            lhs, rhs = PRODS[i]
+            if dot < len(rhs)
+                sym = rhs[dot]
+                # need to look at NT rule associated with this sym
+                if sym in NONTERMINALS:
+                    for j, (jlhs, jrhs) in enumerate(PRODS):
+                        if jlhs == sym and (j, 0) not in items:
+                            new_items.add((j, 0))
+        if new_items - items: #theres a set difference so we changed something
+            items |= new_items
+            changed = True
+        return frozenset(items) #frozenset so we're sure its immutable 
+
+def goto(items, sym):
+    """
+    The GOTO functions for (item, symbol)
+    Used to define transitions in the DFA
+    """
+    moved = set()
+    for (i, dot) in items:
+        lhs, rhs = PRODS[i]
+        if dot < len(rhs) and lhs[dot] == sym:
+            moved.add((i, dot + 1)) #accept as transition and move on 
+    if not moved:
+        return frozenset() # nope
+    return closure(moved)
+
+
                     
                 
