@@ -157,6 +157,38 @@ def goto(items, sym):
         return frozenset() # nope
     return closure(moved)
 
+def build_automaton():
+    """
+    Canonical automaton, idk what else to say we know what this does
+    """
+    # starting state is represented by closure of item S.$
+    start_items = closure({(0,0)})
+    states = [start_items] # will be added to
+    state_index = {start_items: 0}
+    transitions = {} # (state_index, sym) -> state_index
+    
+    frontier = [start_items] # where we still need to explore
+    all_symbols = NONTERMINALS | TERMINALS
+    while frontier:
+        next_frontier = []
+        for items in frontier:
+            s_idx = state_index[items]
+            # foreach symbol, check if theres a goto for that symbol
+            # i.e theres a transition on that symbol for the state we're evaluating
+            for sym in all_symbols:
+                target = goto(items, sym)
+                if not target:
+                    continue 
+                # we've found a new state to explore later 
+                if target not in state_index:
+                    state_index[target] = len(states)
+                    states.append(target)
+                    next_frontier.append(target)
+                # keep track of the new transition that we've found
+                transitions[(s_idx, sym)] = state_index[target]
+        frontier = next_frontier
+    return states, transitions
+
 
                     
                 
