@@ -189,6 +189,38 @@ def build_automaton():
         frontier = next_frontier
     return states, transitions
 
+# step 4, build the SLR parse table
 
+class SLRTable:
+    """
+    Simple class to put all the functions defined above together, 
+    goes through the first three steps automatically during construction, and uses that output
+    in _build() to construct the actual table with no user involvement
+    """
+    def __init__(self):
+        self.first = compute_first()
+        self.follow = compute_follow(self.first)
+        self.states, self.automaton = build_automaton()
+        self.action = {} # (state, terminal) -> ("shift", state) | ("reduce", prod_idx) | ("accept",)
+        self.goto_table = {}
+        self._build()
+        
+        def _conflict(self, state, sym, existing, new):
+            ...
+        
+        def _describe_state(self, state_idx):
+            ...
+        
+        def _build(self):
+            """
+            The 'main' part of the table construction
+            """
+            ...
+        def build_slr_table() -> SLRTable:
+            """
+            The only function exposed from this file. in main (or the actual parser), one just
+            needs to call this, and the table is automatically returned
+            """
+            return SLRTable()
                     
                 
