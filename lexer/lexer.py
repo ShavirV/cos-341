@@ -1,17 +1,3 @@
-"""
-SPL Lexer (v2)
-==============
-Every SPL token is, by spec, delimited by blank_space (ASCII 32 or 13).
-That means tokenization reduces to: split the input on blank_space, then
-classify each resulting chunk as exactly one token type. No maximal munch
-is needed -- a chunk is a valid token iff some DFA consumes it *entirely*
-and ends in a final state.
-
-The three DFAs (NUM, USER-DEFINED-NAME, STRING) are still the hand-derived
-state machines from the paper design -- they're just used here as whole-
-chunk acceptors/diagnosers instead of being run inline against raw text.
-"""
-
 from dataclasses import dataclass
 
 # Spec says blank_space is ASCII 32 (space) or ASCII 13 (\r).
