@@ -291,26 +291,296 @@ class TypeAnalyzer:
             self._fail(n, "Assignment instruction is not well typed.")
     
     def _r_instr_branch(self, n: Node) -> None:
-            branch = self._child(n, 0)
-            if branch.type == OK:
-                n.type = OK
-            else:
-                self._fail(n, "Branch instruction is not well typed.")
+        branch = self._child(n, 0)
+        if branch.type == OK:
+            n.type = OK
+        else:
+            self._fail(n, "Branch instruction is not well typed.")
                 
     def _r_instr_loop(self, n: Node) -> None:
-            loop = self._child(n, 0)
-            if loop.type == OK:
-                n.type = OK
-            else:
-                self._fail(n, "Loop instruction is not well typed.")
+        loop = self._child(n, 0)
+        if loop.type == OK:
+            n.type = OK
+        else:
+            self._fail(n, "Loop instruction is not well typed.")
                 
     def _r_instr_call(self, n: Node) -> None:
         #INSTR -> CALL if type_of(CALL) is "procedure" then INSTR := "ok"
-            call = self._child(n, 0)
-            if call.type == PROCEDURE:
-                n.type = OK
-            else:
-                self._fail(n, "")
+        call = self._child(n, 0)
+        if call.type == PROCEDURE:
+            n.type = OK
+        else:
+            self._fail(n, "")
                 
     def _r_call(self, n: Node) -> None:
+        #CALL -> NAME ( INPUT )   if type_of(INPUT) is "ok" and type_of(NAME) =/= 'unknown: type_of(CALL) := type_of(NAME)
+        name, inp = n.children
+        name_type = self._get_name_type(name)
+        if inp.type == OK and name_type != UNKNOWN and name_type != ERROR:
+            n.type = name_type
+        else:
+            bad = []
+            if inp.type != OK:
+                bad.append("INPUT arguments did not resolved to 'ok'")
+            if name_type == UNKNOWN:
+                bad.append(f"function '{name.value}' is undeclared/untyped")
+            elif name_type == ERROR:
+                bad.append(f"function '{name.value}' has an unresolved type error")
+            self._fail(n, f"Call to '{name.value}' is not well-typed: {'; '.join(bad)}.")
             
+    def _r_input_eps(self, n: Node) -> None:
+        n.type = OK
+    
+    def _r_input_cons(self, n: Node) -> None:
+        #INPUT -> TERM INPUT
+        term, tail = n.children
+        if term.type == NUMERIC and tail.type == OK:
+            n.type = OK
+        else:
+            bad = []
+            if term.type != NUMERIC:
+                bad.append(f"argument TERM is '{term.type}', expected 'numeric'")
+            if tail.type != OK:
+                bad.append("remaining INPUT did not resolve to 'ok'")
+            self._fail(n, f"INPUT list is not well-typed: {'; '.join(bad)}.")
+        
+    def _r_assign(self, n: Node) -> None:
+        #ASSIGN -> NAME = TERM   if type_of(TERM) is "numeric" and type_of(NAME) is "numeric": ASSIGB := "ok"
+        name, term = n.children
+        name_type = self._get_name_type(name)
+        if term.type == NUMERIC and name_type == NUMERIC:
+            n.type = OK
+        else:
+            bad = []
+            if name_type != NUMERIC:
+                bad.append(f"target '{name.value}' has type '{name_type}', expected 'numeric'")
+            if term.type != NUMERIC:
+                bad.append(f"right-hand side is '{term.type}', expected 'numeric'")
+            self._fail(n, f"Assignment is not well-typed: {'; '.join(bad)}.")
+
+    def _r_term_name(self, n: Node) -> None:
+        # TERM -> NAME    if type_of(NAME) is "numeric" then TERM := "numeric"
+        name = self._child(n, 0)
+        name_type = self._get_name_type(name)
+        if name_type == NUMERIC:
+            n.type = NUMERIC
+        else:
+            self._fail(
+                n,
+                f"Use of '{name.value}' as a numeric TERM requires it to be 'numeric', "
+                f"but it is '{name_type}' "
+                f"(undeclared variable, or used before declared, or wrong kind of name)."
+                if name_type == UNKNOWN else
+                f"Use of '{name.value}' as a numeric TERM is invalid: type is '{name_type}', expected 'numeric'.",
+            )
+
+    def _r_term_num(self, n: Node) -> None:
+        n.type = NUMERIC
+
+    def _r_term_call(self, n: Node) -> None:
+        # TERM -> CALL    if type_of(CALL) is "numeric" then TERM := "numeric"
+        call = self._child(n, 0)
+        if call.type == NUMERIC:
+            n.type = NUMERIC
+        else:
+            reason = {
+                PROCEDURE: "it targets a 'void' function, which returns nothing usable as a value",
+                ERROR: "the call itself is not well-typed (see the error reported for it above)",
+                UNKNOWN: "the called name is undeclared or not yet resolved to a type",
+            }.get(call.type, f"the call resolved to type '{call.type}', not 'numeric'")
+            self._fail(
+                n,
+                f"Call used as a numeric TERM must target a 'num' function: {reason}.",
+            )
+
+    def _binary_numeric_term(self, n: Node, opname: str) -> None:
+        # shared logic for mod/div/add/sub/mul: TERM op ( TERM TERM )
+        t1, t2 = n.children
+        if t1.type == NUMERIC and t2.type == NUMERIC:
+            n.type = NUMERIC
+        else:
+            bad = []
+            if t1.type != NUMERIC:
+                bad.append(f"1st operand is '{t1.type}'")
+            if t2.type != NUMERIC:
+                bad.append(f"2nd operand is '{t2.type}'")
+            self._fail(n, f"'{opname}(...)' requires two numeric operands: {', '.join(bad)}.")
+
+    def _r_term_mod(self, n: Node) -> None:
+        self._binary_numeric_term(n, "mod")
+
+    def _r_term_div(self, n: Node) -> None:
+        self._binary_numeric_term(n, "div")
+
+    def _r_term_add(self, n: Node) -> None:
+        self._binary_numeric_term(n, "add")
+
+    def _r_term_sub(self, n: Node) -> None:
+        self._binary_numeric_term(n, "sub")
+
+    def _r_term_mul(self, n: Node) -> None:
+        self._binary_numeric_term(n, "mul")
+
+    def _r_term_neg(self, n: Node) -> None:
+        # TERM -> neg ( TERM )
+        t = self._child(n, 0)
+        if t.type == NUMERIC:
+            n.type = NUMERIC
+        else:
+            self._fail(n, f"'neg(...)' requires a numeric operand, got '{t.type}'.")
+
+    def _r_branch(self, n: Node) -> None:
+        # BRANCH -> if BOOL then { ALGO } else { ALGO }
+        bool_, algo1, algo2 = n.children
+        if algo1.type == OK and algo2.type == OK and bool_.type == BOOLEAN:
+            n.type = OK
+        else:
+            bad = []
+            if bool_.type != BOOLEAN:
+                bad.append(f"condition is '{bool_.type}', expected 'boolean'")
+            if algo1.type != OK:
+                bad.append("'then' branch is not well-typed")
+            if algo2.type != OK:
+                bad.append("'else' branch is not well-typed")
+            self._fail(n, f"if-branch is not well-typed: {'; '.join(bad)}.")
+
+    def _r_bool_not(self, n: Node) -> None:
+        b = self._child(n, 0)
+        if b.type == BOOLEAN:
+            n.type = BOOLEAN
+        else:
+            self._fail(n, f"'not(...)' requires a boolean operand, got '{b.type}'.")
+
+    def _binary_bool_bool(self, n: Node, opname: str) -> None:
+        b1, b2 = n.children
+        if b1.type == BOOLEAN and b2.type == BOOLEAN:
+            n.type = BOOLEAN
+        else:
+            bad = []
+            if b1.type != BOOLEAN:
+                bad.append(f"1st operand is '{b1.type}'")
+            if b2.type != BOOLEAN:
+                bad.append(f"2nd operand is '{b2.type}'")
+            self._fail(n, f"'{opname}(...)' requires two boolean operands: {', '.join(bad)}.")
+
+    def _r_bool_and(self, n: Node) -> None:
+        self._binary_bool_bool(n, "and")
+
+    def _r_bool_or(self, n: Node) -> None:
+        self._binary_bool_bool(n, "or")
+
+    def _binary_numeric_to_bool(self, n: Node, opname: str) -> None:
+        t1, t2 = n.children
+        if t1.type == NUMERIC and t2.type == NUMERIC:
+            n.type = BOOLEAN
+        else:
+            bad = []
+            if t1.type != NUMERIC:
+                bad.append(f"1st operand is '{t1.type}'")
+            if t2.type != NUMERIC:
+                bad.append(f"2nd operand is '{t2.type}'")
+            self._fail(n, f"'{opname}(...)' requires two numeric operands: {', '.join(bad)}.")
+
+    def _r_bool_eq(self, n: Node) -> None:
+        self._binary_numeric_to_bool(n, "eq")
+
+    def _r_bool_larger(self, n: Node) -> None:
+        self._binary_numeric_to_bool(n, "larger")
+
+    def _r_bool_lesser(self, n: Node) -> None:
+        self._binary_numeric_to_bool(n, "lesser")
+
+    def _r_cond(self, n: Node) -> None:
+        #COND -> while | until    always "ok"
+        n.type = OK
+
+    def _loop_common(self, n: Node) -> None:
+        algo, cond, bool_ = n.children
+        if algo.type == OK and cond.type == OK and bool_.type == BOOLEAN:
+            n.type = OK
+        else:
+            bad = []
+            if cond.type != OK:
+                bad.append("COND did not resolve to 'ok'")
+            if bool_.type != BOOLEAN:
+                bad.append(f"loop condition is '{bool_.type}', expected 'boolean'")
+            if algo.type != OK:
+                bad.append("loop body ALGO is not well-typed")
+            self._fail(n, f"Loop is not well-typed: {'; '.join(bad)}.")
+
+    def _r_loop_pre(self, n: Node) -> None:
+        #LOOP -> COND BOOL do { ALGO }
+        cond, bool_, algo = n.children
+        self._loop_common_ordered(n, cond, bool_, algo)
+
+    def _r_loop_post(self, n: Node) -> None:
+        #LOOP -> do { ALGO } COND BOOL
+        algo, cond, bool_ = n.children
+        self._loop_common_ordered(n, cond, bool_, algo)
+
+    def _loop_common_ordered(self, n: Node, cond: Node, bool_: Node, algo: Node) -> None:
+        if algo.type == OK and cond.type == OK and bool_.type == BOOLEAN:
+            n.type = OK
+        else:
+            bad = []
+            if cond.type != OK:
+                bad.append("COND did not resolve to 'ok'")
+            if bool_.type != BOOLEAN:
+                bad.append(f"loop condition is '{bool_.type}', expected 'boolean'")
+            if algo.type != OK:
+                bad.append("loop body ALGO is not well-typed")
+            self._fail(n, f"Loop is not well-typed: {'; '.join(bad)}.")
+
+    
+    #dispatch table
+
+    _DISPATCH = {}
+
+
+#populating dispatch table:
+TypeAnalyzer._DISPATCH = {
+    Kind.SPL_PROG: TypeAnalyzer._r_spl_prog,
+    Kind.P: TypeAnalyzer._r_p,
+    Kind.V_DECL_EPS: TypeAnalyzer._r_v_decl_eps,
+    Kind.V_DECL_CONS: TypeAnalyzer._r_v_decl_cons,
+    Kind.F_DECL_EPS: TypeAnalyzer._r_f_decl_eps,
+    Kind.F_DECL_CONS: TypeAnalyzer._r_f_decl_cons,
+    Kind.F_TYPE_VOID: TypeAnalyzer._r_f_type_void,
+    Kind.F_TYPE_NUM: TypeAnalyzer._r_f_type_num,
+    Kind.ALGO_EPS: TypeAnalyzer._r_algo_eps,
+    Kind.ALGO_CONS: TypeAnalyzer._r_algo_cons,
+    Kind.OUTP_TERM: TypeAnalyzer._r_outp_term,
+    Kind.OUTP_STRING: TypeAnalyzer._r_outp_string,
+    Kind.INSTR_PRINT: TypeAnalyzer._r_instr_print,
+    Kind.INSTR_NOP: TypeAnalyzer._r_instr_nop,
+    Kind.INSTR_COMMENT: TypeAnalyzer._r_instr_comment,
+    Kind.INSTR_ASSIGN: TypeAnalyzer._r_instr_assign,
+    Kind.INSTR_BRANCH: TypeAnalyzer._r_instr_branch,
+    Kind.INSTR_LOOP: TypeAnalyzer._r_instr_loop,
+    Kind.INSTR_CALL: TypeAnalyzer._r_instr_call,
+    Kind.CALL: TypeAnalyzer._r_call,
+    Kind.INPUT_EPS: TypeAnalyzer._r_input_eps,
+    Kind.INPUT_CONS: TypeAnalyzer._r_input_cons,
+    Kind.ASSIGN: TypeAnalyzer._r_assign,
+    Kind.TERM_NAME: TypeAnalyzer._r_term_name,
+    Kind.TERM_NUM: TypeAnalyzer._r_term_num,
+    Kind.TERM_CALL: TypeAnalyzer._r_term_call,
+    Kind.TERM_MOD: TypeAnalyzer._r_term_mod,
+    Kind.TERM_DIV: TypeAnalyzer._r_term_div,
+    Kind.TERM_ADD: TypeAnalyzer._r_term_add,
+    Kind.TERM_SUB: TypeAnalyzer._r_term_sub,
+    Kind.TERM_MUL: TypeAnalyzer._r_term_mul,
+    Kind.TERM_NEG: TypeAnalyzer._r_term_neg,
+    Kind.BRANCH: TypeAnalyzer._r_branch,
+    Kind.BOOL_NOT: TypeAnalyzer._r_bool_not,
+    Kind.BOOL_AND: TypeAnalyzer._r_bool_and,
+    Kind.BOOL_OR: TypeAnalyzer._r_bool_or,
+    Kind.BOOL_EQ: TypeAnalyzer._r_bool_eq,
+    Kind.BOOL_LARGER: TypeAnalyzer._r_bool_larger,
+    Kind.BOOL_LESSER: TypeAnalyzer._r_bool_lesser,
+    Kind.COND_WHILE: TypeAnalyzer._r_cond,
+    Kind.COND_UNTIL: TypeAnalyzer._r_cond,
+    Kind.LOOP_PRE: TypeAnalyzer._r_loop_pre,
+    Kind.LOOP_POST: TypeAnalyzer._r_loop_post,
+}
+    
