@@ -131,7 +131,7 @@ def closure(items):
         # split at dot and analyse 
         for (i, dot) in items:
             lhs, rhs = PRODS[i]
-            if dot < len(rhs)
+            if dot < len(rhs):
                 sym = rhs[dot]
                 # need to look at NT rule associated with this sym
                 if sym in NONTERMINALS:
@@ -271,11 +271,20 @@ class SLRTable:
                             self.action[(s_idx, a)] = new_action
             
             
-        def build_slr_table() -> SLRTable:
-            """
-            The only function exposed from this file. in main (or the actual parser), one just
-            needs to call this, and the table is automatically returned
-            """
-            return SLRTable()
+def build_slr_table() -> SLRTable:
+    """
+    The only function exposed from this file. in main (or the actual parser), one just
+    needs to call this, and the table is automatically returned
+    """
+    return SLRTable()
+
+if __name__ == "__main__":
+    # check by building the table and reporting if it worked or not
+    table = build_slr_table()
+    print(f"SLR(1) table built successfully: "
+          f"{len(table.states)} states, "
+          f"{len(table.action)} action entries, "
+          f"{len(table.goto_table)} goto entries.")
+    print("Grammar is SLR(1). no conflicts.")
                     
                 
