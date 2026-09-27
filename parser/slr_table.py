@@ -141,7 +141,7 @@ def closure(items):
         if new_items - items: #theres a set difference so we changed something
             items |= new_items
             changed = True
-        return frozenset(items) #frozenset so we're sure its immutable 
+    return frozenset(items) #frozenset so we're sure its immutable 
 
 def goto(items, sym):
     """
@@ -151,7 +151,7 @@ def goto(items, sym):
     moved = set()
     for (i, dot) in items:
         lhs, rhs = PRODS[i]
-        if dot < len(rhs) and lhs[dot] == sym:
+        if dot < len(rhs) and rhs[dot] == sym:
             moved.add((i, dot + 1)) #accept as transition and move on 
     if not moved:
         return frozenset() # nope
