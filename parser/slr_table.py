@@ -200,22 +200,77 @@ class SLRTable:
     def __init__(self):
         self.first = compute_first()
         self.follow = compute_follow(self.first)
-        self.states, self.automaton = build_automaton()
+        self.states, self.transitions = build_automaton()
         self.action = {} # (state, terminal) -> ("shift", state) | ("reduce", prod_idx) | ("accept",)
         self.goto_table = {}
         self._build()
         
-        def _conflict(self, state, sym, existing, new):
-            ...
-        
-        def _describe_state(self, state_idx):
-            ...
-        
-        def _build(self):
-            """
-            The 'main' part of the table construction
-            """
-            ...
+    def _conflict(self, state, sym, existing, new):
+        """
+        raise a fuss if theres an issue with the grammar
+        should never hit for this grammar but should help us debug if
+        things go wrong somehow
+        """
+        raise GrammarConflictError(
+        f"Grammar is NOT SLR(1): conflict in state {state} on symbol "
+        f"'{sym}': existing action {existing}, new action {new}.\n"
+        f"Items in state {state}:\n" + self._describe_state(state)
+    )
+    
+    def _describe_state(self, state_idx):
+        """
+        internal helper to help determine what kind of state the item is in            
+        """
+        lines = []
+        for (i, dot) in sorted(self.states[state_idx]):
+            lhs, rhs = PRODS[i]
+            rhs_str = " ".join(rhs) if rhs else "ε" # U+03B5
+            marked = list(rhs)
+            marked.insert(dot, "•") # U+2022
+            lines.append(f"  {lhs} -> {' '.join(marked) if marked else '•'}")
+        return "\n".join(lines)
+    
+    def _build(self):
+        """
+        The 'main' part of the table construction
+        """
+        for s_idx, items in enumerate(self.states):
+            for (i, dot) in items:
+                lhs, rhs = PRODS[i]
+
+                # shift and goto actions (dot before symbol)
+                if dot < len(rhs):
+                    sym = rhs[dot]
+                    tgt = self.transitions.get((s_idx, sym))
+                    if tgt is None:
+                        continue
+                    if sym in TERMINALS:
+                        new_action = ("shift", tgt)
+                        existing = self.action.get((s_idx, sym))
+                        if existing and existing != new_action:
+                            self._conflict(s_idx, sym, existing, new_action)
+                        self.action[(s_idx, sym)] = new_action
+                    else:
+                        self.goto_table[(s_idx, sym)] = tgt
+
+                # reduce and accept (dot after RHS)
+                else:
+                    if i == 0:
+                        # SPL_PROG' -> SPL_PROG . -> accept on end marker
+                        new_action = ("accept",)
+                        existing = self.action.get((s_idx, "#"))
+                        if existing and existing != new_action:
+                            self._conflict(s_idx, "#", existing, new_action)
+                        self.action[(s_idx, "#")] = new_action
+                    else:
+                        for a in self.follow[lhs]:
+                            new_action = ("reduce", i)
+                            existing = self.action.get((s_idx, a))
+                            if existing and existing != new_action:
+                                self._conflict(s_idx, a, existing, new_action)
+                            self.action[(s_idx, a)] = new_action
+            
+            
         def build_slr_table() -> SLRTable:
             """
             The only function exposed from this file. in main (or the actual parser), one just

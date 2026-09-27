@@ -18,9 +18,7 @@ EPS = () # so its actually readable
 
 # tuple of (LHS, RHS)
 PRODUCTIONS = [
-    ("SPL_PROG", ("P", "$")), # rule 0
-    
-        ("SPL_PROG", ("P", "$")),
+    ("SPL_PROG", ("P", "$")),
 
     ("P", ("V_DECL", ":", "F_DECL", ":", "ALGO")),
 
@@ -86,4 +84,4 @@ ALL_RHS_SYMBOLS = {sym for _, rhs in PRODUCTIONS for sym in rhs} # since rhs can
 TERMINALS = (ALL_RHS_SYMBOLS - NONTERMINALS) | {"#"} # python got set operations what a banger
 
 # terminals that are associated with a lexical category. will defined by 'class' not 'text'
-KIND_TERMINALS = {"NUM", "USER-DEFINED-NAME", "STRING"}S
+KIND_TERMINALS = {"NUM", "USER-DEFINED-NAME", "STRING"}
