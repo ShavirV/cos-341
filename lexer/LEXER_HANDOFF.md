@@ -1,13 +1,13 @@
 # SPL Lexer — Handoff Notes
 
 For whoever's picking this up to build the parser. Read this before you touch
-`lexer2.py` — it'll save you re-deriving decisions that were already argued
+`lexer.py` — it'll save you re-deriving decisions that were already argued
 through.
 
 ## 1. The public interface (this is all the parser needs to know)
 
 ```python
-from lexer2 import tokenize, Token, LexError
+from lexer import tokenize, Token, LexError
 
 tokens = tokenize(source_text)   # returns List[Token], or raises LexError
 ```
@@ -28,7 +28,7 @@ to catch this mid-parse; if `tokenize()` succeeds, the entire input is
 lexically valid — you get a clean list of tokens or nothing at all. There's
 no partial/recovery mode.
 
-**`KEYWORDS`** and **`SYMBOLS`** (sets, importable from `lexer2`) are the
+**`KEYWORDS`** and **`SYMBOLS`** (sets, importable from `lexer`) are the
 exact literal strings the grammar treats as keywords/symbols — useful if the
 parser wants to sanity-check a token's lexeme against `SYMBOLS`/`KEYWORDS`
 rather than hardcoding strings again.
@@ -50,7 +50,7 @@ rather than hardcoding strings again.
   per a literal reading of the spec.
 
 - **The final token in the file must also be followed by blank_space.**
-  Toggle: `REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN` in `lexer2.py`. Currently
+  Toggle: `REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN` in `lexer.py`. Currently
   `True`. If your tutor confirms EOF-right-after-`$` is fine, flip this.
 
 - **`\n` is treated as blank_space alongside the spec's ASCII 32/13.**
@@ -87,7 +87,7 @@ up elsewhere:
 
 If the parser layer ever needs to inspect a `NUM` lexeme's structure
 (e.g. splitting sign/integer/fraction parts for semantic analysis later),
-the state names in `run_num()` inside `lexer2.py` map directly onto this.
+the state names in `run_num()` inside `lexer.py` map directly onto this.
 
 ## 4. What's already tested (don't re-derive from scratch)
 

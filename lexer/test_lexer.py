@@ -1,5 +1,5 @@
 """
-Test suite for lexer2.py
+Test suite for lexer.py
 
 Testing strategy
 -----------------
@@ -23,7 +23,7 @@ Run with:  python3 -m unittest test_lexer.py -v
 """
 
 import unittest
-from lexer2 import tokenize, classify, LexError, Token
+from lexer import tokenize, classify, LexError, Token
 
 
 def kinds(text):
@@ -32,7 +32,7 @@ def kinds(text):
 
 
 class TestNumTransitionCoverage(unittest.TestCase):
-    # State diagram being covered (see lexer2.run_num):
+    # State diagram being covered (see lexer.run_num):
     #   A -(-)-> D        A -(0)-> C        A -(1..9)-> B
     #   D -(0)-> Z        D -(1..9)-> B
     #   Z -(.)-> GH
@@ -170,12 +170,12 @@ class TestStringTransitionCoverage(unittest.TestCase):
 
 class TestKeywordsAndSymbols(unittest.TestCase):
     def test_all_keywords_recognized(self):
-        from lexer2 import KEYWORDS
+        from lexer import KEYWORDS
         for kw in KEYWORDS:
             self.assertEqual(kinds(f'{kw} '), [('KEYWORD', kw)], msg=kw)
 
     def test_all_symbols_recognized(self):
-        from lexer2 import SYMBOLS
+        from lexer import SYMBOLS
         for sym in SYMBOLS:
             self.assertEqual(kinds(f'{sym} '), [('SYMBOL', sym)], msg=sym)
 
