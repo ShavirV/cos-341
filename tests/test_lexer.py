@@ -23,7 +23,7 @@ Run with:  python3 -m unittest test_lexer.py -v
 """
 
 import unittest
-from lexer import tokenize, classify, LexError, Token
+from lexer.lexer import tokenize, classify, LexError, Token
 
 
 def kinds(text):
@@ -170,12 +170,12 @@ class TestStringTransitionCoverage(unittest.TestCase):
 
 class TestKeywordsAndSymbols(unittest.TestCase):
     def test_all_keywords_recognized(self):
-        from lexer import KEYWORDS
+        from lexer.lexer import KEYWORDS
         for kw in KEYWORDS:
             self.assertEqual(kinds(f'{kw} '), [('KEYWORD', kw)], msg=kw)
 
     def test_all_symbols_recognized(self):
-        from lexer import SYMBOLS
+        from lexer.lexer import SYMBOLS
         for sym in SYMBOLS:
             self.assertEqual(kinds(f'{sym} '), [('SYMBOL', sym)], msg=sym)
 

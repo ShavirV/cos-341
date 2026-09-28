@@ -6,10 +6,10 @@ Each test targets one rule or one error condition straight from the spec.
 
 """
 
-from ast_nodes import Node, Kind
-from symbol_table import SymbolTable
-from type_analyzer import TypeAnalyzer, OK, NUMERIC, BOOLEAN, PROCEDURE
-from errors import SPLTypeAnalysisFailed
+from semantics.ast_nodes import Node, Kind
+from semantics.symbol_table import SymbolTable
+from semantics.type_analyzer import TypeAnalyzer, OK, NUMERIC, BOOLEAN, PROCEDURE
+from semantics.errors import SPLTypeAnalysisFailed
 
 
 
