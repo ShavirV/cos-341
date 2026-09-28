@@ -50,7 +50,7 @@ class TypeAnalyzer:
         if not ok and root.type != ERROR and not self.errors:
             #guarding against silently unknown roots
             self.errors.append(SPLTypeError(
-                "SPL_PROG did not reach type 'ok'. "
+                "SPL_PROG did not reach type 'ok'. ",
                 line=getattr(root, "line", None), node=root,
             ))
         
@@ -81,7 +81,7 @@ class TypeAnalyzer:
         
         if has_mod[0] and has_div[0]:
             return SPLTypeError(
-                "A float-integer-conflict might occur"
+                "A float-integer-conflict might occur",
                 line=getattr(root, "line", None), node=root,
             )
             
@@ -91,7 +91,8 @@ class TypeAnalyzer:
                 for n in num_leaves_with_dot
             )
             return SPLTypeError(
-                f"Decimal numbers {offenders} are not allowed under 'mod' operator"
+                f"A decimal dot is not allowed anywhere in the program when 'mod' is used, "
+                f"but found: {offenders}",
                 line=getattr(root, "line", None), node=root,
             )
             
@@ -175,7 +176,7 @@ class TypeAnalyzer:
                 bad.append("V_DECL")
             if f_decl.type != OK:
                 bad.append("F_DECL")
-            if algo.typo != OK:
+            if algo.type != OK:
                 bad.append("ALGO")
             self._fail(n, f"P is not well-typed: {', '.join(bad)} did not resolve to 'ok'.")
     
@@ -186,9 +187,9 @@ class TypeAnalyzer:
     def _r_v_decl_cons(self, n: Node) -> None:
         #V_DECL -> NAME V_DECL
         name, tail = n.children
-        if tail.type ==OK:
+        if tail.type == OK:
             self._set_name_type(name, NUMERIC)
-            n.type = OK
+            n.type = OK if name.type != ERROR else ERROR
         else:
             self._fail(n, "V_DECL is malformed.")
     
@@ -213,7 +214,7 @@ class TypeAnalyzer:
         name, v_decl, p = n.children
         if p.type == OK and v_decl.type == OK:
             self._set_name_type(name, PROCEDURE)
-            n.type =OK
+            n.type = OK if name.type != ERROR else ERROR
         else: 
             bad = []
             if p.type != OK:
@@ -229,8 +230,8 @@ class TypeAnalyzer:
         #F_TYPE -> num NAME ( V_DECL ) { P return ( TERM ) }
         name, v_decl, p, term = n.children
         if p.type == OK and v_decl.type == OK and term.type == NUMERIC:
-            seld._set_name_type(name, NUMERIC)
-            n.type = OK
+            self._set_name_type(name, NUMERIC)
+            n.type = OK if name.type != ERROR else ERROR
         else:
             bad = []
             if p.type != OK:
@@ -311,7 +312,11 @@ class TypeAnalyzer:
         if call.type == PROCEDURE:
             n.type = OK
         else:
-            self._fail(n, "")
+            self._fail(
+                n,
+                f"A call used as an instruction must target a 'void' (procedure) function, "
+                f"but this call resolved to type '{call.type}'.",
+            )
                 
     def _r_call(self, n: Node) -> None:
         #CALL -> NAME ( INPUT )   if type_of(INPUT) is "ok" and type_of(NAME) =/= 'unknown: type_of(CALL) := type_of(NAME)
@@ -494,20 +499,6 @@ class TypeAnalyzer:
     def _r_cond(self, n: Node) -> None:
         #COND -> while | until    always "ok"
         n.type = OK
-
-    def _loop_common(self, n: Node) -> None:
-        algo, cond, bool_ = n.children
-        if algo.type == OK and cond.type == OK and bool_.type == BOOLEAN:
-            n.type = OK
-        else:
-            bad = []
-            if cond.type != OK:
-                bad.append("COND did not resolve to 'ok'")
-            if bool_.type != BOOLEAN:
-                bad.append(f"loop condition is '{bool_.type}', expected 'boolean'")
-            if algo.type != OK:
-                bad.append("loop body ALGO is not well-typed")
-            self._fail(n, f"Loop is not well-typed: {'; '.join(bad)}.")
 
     def _r_loop_pre(self, n: Node) -> None:
         #LOOP -> COND BOOL do { ALGO }
