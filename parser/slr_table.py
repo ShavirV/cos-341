@@ -17,7 +17,7 @@ problem for this grammar
 """
 
 from collections import defaultdict
-from grammar import PRODUCTIONS, NONTERMINALS, TERMINALS, START, EPS
+from .grammar import PRODUCTIONS, NONTERMINALS, TERMINALS, START, EPS
 
 AUGMENTED_START = START + "'"
 

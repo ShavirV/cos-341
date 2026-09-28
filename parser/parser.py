@@ -10,11 +10,9 @@ import sys
 from pathlib import Path
 from typing import List
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "xmlwriter"))
-
-from node import Node  # we need to create our tree out of these nodes
-from grammar import START
-from slr_table import build_slr_table, GrammarConflictError, PRODS
+from xmlwriter.node import Node  # we need to create our tree out of these nodes
+from .grammar import START
+from .slr_table import build_slr_table, GrammarConflictError, PRODS
 
 
 class SyntaxError_(Exception):
