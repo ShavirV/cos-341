@@ -9,10 +9,11 @@ It will not stop at the first error. It will continue and collect every violatio
 """
 
 from __future__ import annotations
-from typing import List, Optimal
-from ast_node import Node, Kind
-from symbol_table import SymbolTable
-from errors import SPLTypeError, SPLTypeAnalysisFailed
+from typing import List, Optional
+
+from semantics.ast_nodes import Node, Kind
+from semantics.symbol_table import SymbolTable
+from semantics.errors import SPLTypeError, SPLTypeAnalysisFailed
 
 OK = "ok"
 NUMERIC = "numeric"
@@ -22,41 +23,41 @@ UNKNOWN = "unknown"
 ERROR = "error"       #sentinel value for type errors, used to avoid cascading errors(re-reporting ancestors) 
 
 class TypeAnalyzer:
-    def __init__(self, symtab: Optimal[SymbolTable] = None):
+    def __init__(self, symtab: Optional[SymbolTable] = None):
         self.symtab = symtab if symtab is not None else SymbolTable()
         self.errors: List[SPLTypeError] = [] 
         
-        def analyze(self, root: Node, strict: bool = True) -> bool:
-            """
-            Returns True if tree is well typed (type_of(root) == "ok")
-            if strict=True and errors found then it raises SPLTypeAnalisisFailed
-            """
-            self.errors = []
-            
-            #the crude pre-check
-            confilct = self.check_mod_div_conflict(root)
-            if conflict is not None:
-                self.errors.append(conflict)
-                if strict:
-                    raise SPLTypeAnalysisFailed(self.errors)
-                root.type = ERROR
-                return False
-            
-            #bottom-up type analysis
-            self._visit(root)
-            
-            ok = (root.type ==OK)
-            if not ok and root.type != ERROR and not self.errors:
-                #guarding against silently unknown roots
-                self.errors.append(SPLTypeError(
-                    "SPL_PROG did not reach type 'ok'. "
-                    line=getattr(root, "line", None), node=root,
-                ))
-            
-            if strict and self.errors:
+    def analyze(self, root: Node, strict: bool = True) -> bool:
+        """
+        Returns True if tree is well typed (type_of(root) == "ok")
+        if strict=True and errors found then it raises SPLTypeAnalisisFailed
+        """
+        self.errors = []
+        
+        #the crude pre-check
+        conflict = self.check_mod_div_conflict(root)
+        if conflict is not None:
+            self.errors.append(conflict)
+            if strict:
                 raise SPLTypeAnalysisFailed(self.errors)
-            
-            return ok and not self.errors
+            root.type = ERROR
+            return False
+        
+        #bottom-up type analysis
+        self._visit(root)
+        
+        ok = (root.type ==OK)
+        if not ok and root.type != ERROR and not self.errors:
+            #guarding against silently unknown roots
+            self.errors.append(SPLTypeError(
+                "SPL_PROG did not reach type 'ok'. "
+                line=getattr(root, "line", None), node=root,
+            ))
+        
+        if strict and self.errors:
+            raise SPLTypeAnalysisFailed(self.errors)
+        
+        return ok and not self.errors
         
     #global crude rule: mod/div conflict + no decimal dot under mod
     
@@ -70,7 +71,7 @@ class TypeAnalyzer:
                 has_mod[0] = True
             elif n.kind == Kind.TERM_DIV:
                 has_div[0] = True
-            elif n.kind = Kind.NUM:
+            elif n.kind == Kind.NUM:
                 if n.value is not None and "." in n.value:
                     num_leaves_with_dot.append(n)
             for c in n.children:
@@ -114,7 +115,7 @@ class TypeAnalyzer:
     #----------
         
     _PASSTHROUGH_KINDS = frozenset({
-        "SPL_PROG", "P"
+        "SPL_PROG", "P",
         "V_DECL_CONS", "F_DECL_CONS", "ALGO_CONS",
         "INSTR_PRINT", "INSTR_ASSIGN","INSTR_BRANCH", "INSTR_LOOP", "INSTR_CALL",
         "OUTP_TERM",

@@ -20,7 +20,7 @@ VALID_PROGRAM = (
 )
 
 # Lexically valid but syntactically invalid: ASSIGN with a missing TERM.
-BROKEN_ASSIGN = '#x : : : #x = ; $ '  # '=' with nothing after it
+BROKEN_ASSIGN = '#x : : #x = ; $ '  # '=' with nothing after it
 
 
 if __name__ == "__main__":

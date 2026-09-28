@@ -1,6 +1,6 @@
-from ast_nodes import Node, Kind
-from type_analyzer import TypeAnalyzer
-from errors import SPLTypeAnalysisFailed
+from semantics.ast_nodes import Node, Kind
+from semantics.type_analyzer import TypeAnalyzer
+from semantics.errors import SPLTypeAnalysisFailed
 
 
 def build_demo_program() -> Node:
