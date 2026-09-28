@@ -1,3 +1,17 @@
+"""
+SPL Lexer (v2)
+==============
+Every SPL token is, by spec, delimited by blank_space (ASCII 32 or 13).
+That means tokenization reduces to: split the input on blank_space, then
+classify each resulting chunk as exactly one token type. No maximal munch
+is needed -- a chunk is a valid token iff some DFA consumes it *entirely*
+and ends in a final state.
+
+The three DFAs (NUM, USER-DEFINED-NAME, STRING) are still the hand-derived
+state machines from the paper design -- they're just used here as whole-
+chunk acceptors/diagnosers instead of being run inline against raw text.
+"""
+
 from dataclasses import dataclass
 
 # Spec says blank_space is ASCII 32 (space) or ASCII 13 (\r).
@@ -17,7 +31,14 @@ KEYWORDS = {
     "nop", "comment", "mod", "add", "sub", "mul", "div", "neg",
     "and", "or", "not", "eq", "larger", "lesser", "return",
 }
-SYMBOLS = set("(){}:;=$")
+SYMBOLS = set("(){}:;=")
+# NOTE: '$' is deliberately NOT in here. Per the spec, '$' is a pseudo-symbol
+# used only to talk ABOUT the parser (SPL_PROG -> P$ means "P, then end of
+# input") -- it is never a literal character in an SPL.txt test file. If '$'
+# ever appears in real input, it should be REJECTED as an invalid character,
+# not accepted as a symbol. The parser is responsible for recognizing "no
+# tokens left" as the end-of-input condition; it must not expect a literal
+# '$' token from the lexer.
 
 
 @dataclass
@@ -238,7 +259,9 @@ def tokenize(text):
 
 
 if __name__ == "__main__":
-    good = '#x 0 -0.5 5 -5 0.5 "hello,world" if while $ '
+    # note: no trailing '$' -- it's not a real character in SPL.txt files,
+    # see the NOTE above SYMBOLS.
+    good = '#x 0 -0.5 5 -5 0.5 "hello,world" if while '
     print("--- valid program fragment ---")
     for tok in tokenize(good):
         print(tok)
@@ -253,6 +276,7 @@ if __name__ == "__main__":
         '#h@llo ',         # bad char in name
         'foo ',            # not a keyword/symbol/anything
         '#x 0',            # missing trailing blank on last token
+        '$ ',              # '$' is not a real SPL symbol -- must be rejected
     ]
     for s in bad_cases:
         try:
