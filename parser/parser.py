@@ -65,8 +65,10 @@ class Parser:
         return _token_text(tok)
 
     def _expected_symbols(self, state: int) -> List[str]:
+        # '#' is only our internal end-of-input marker; show it as words
         return sorted(
-            sym for (s, sym) in self.table.action.keys() if s == state
+            "end of input" if sym == "#" else sym
+            for (s, sym) in self.table.action.keys() if s == state
         )
 
     def parse(self) -> Node:
@@ -141,7 +143,9 @@ class Parser:
                 return node_stack[0]
 
     def _make_leaf(self, tok) -> Node:
-        return Node(contents=_token_text(tok), node_type="leaf")
+        line = _token_line(tok)
+        return Node(contents=_token_text(tok), node_type="leaf",
+                    line=line if line > 0 else None)
 
     def _make_inner(self, name: str, node_type: str, children: List[Node]) -> Node:
         node = Node(contents=name, node_type=node_type)
