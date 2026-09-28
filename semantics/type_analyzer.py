@@ -9,10 +9,11 @@ It will not stop at the first error. It will continue and collect every violatio
 """
 
 from __future__ import annotations
-from typing import List, Optimal
-from ast_node import Node, Kind
-from symbol_table import SymbolTable
-from errors import SPLTypeError, SPLTypeAnalysisFailed
+from typing import List, Optional
+
+from semantics.ast_nodes import Node, Kind
+from semantics.symbol_table import SymbolTable
+from semantics.errors import SPLTypeError, SPLTypeAnalysisFailed
 
 OK = "ok"
 NUMERIC = "numeric"
@@ -22,41 +23,41 @@ UNKNOWN = "unknown"
 ERROR = "error"       #sentinel value for type errors, used to avoid cascading errors(re-reporting ancestors) 
 
 class TypeAnalyzer:
-    def __init__(self, symtab: Optimal[SymbolTable] = None):
+    def __init__(self, symtab: Optional[SymbolTable] = None):
         self.symtab = symtab if symtab is not None else SymbolTable()
         self.errors: List[SPLTypeError] = [] 
         
-        def analyze(self, root: Node, strict: bool = True) -> bool:
-            """
-            Returns True if tree is well typed (type_of(root) == "ok")
-            if strict=True and errors found then it raises SPLTypeAnalisisFailed
-            """
-            self.errors = []
-            
-            #the crude pre-check
-            confilct = self.check_mod_div_conflict(root)
-            if conflict is not None:
-                self.errors.append(conflict)
-                if strict:
-                    raise SPLTypeAnalysisFailed(self.errors)
-                root.type = ERROR
-                return False
-            
-            #bottom-up type analysis
-            self._visit(root)
-            
-            ok = (root.type ==OK)
-            if not ok and root.type != ERROR and not self.errors:
-                #guarding against silently unknown roots
-                self.errors.append(SPLTypeError(
-                    "SPL_PROG did not reach type 'ok'. "
-                    line=getattr(root, "line", None), node=root,
-                ))
-            
-            if strict and self.errors:
+    def analyze(self, root: Node, strict: bool = True) -> bool:
+        """
+        Returns True if tree is well typed (type_of(root) == "ok")
+        if strict=True and errors found then it raises SPLTypeAnalisisFailed
+        """
+        self.errors = []
+        
+        #the crude pre-check
+        conflict = self.check_mod_div_conflict(root)
+        if conflict is not None:
+            self.errors.append(conflict)
+            if strict:
                 raise SPLTypeAnalysisFailed(self.errors)
-            
-            return ok and not self.errors
+            root.type = ERROR
+            return False
+        
+        #bottom-up type analysis
+        self._visit(root)
+        
+        ok = (root.type ==OK)
+        if not ok and root.type != ERROR and not self.errors:
+            #guarding against silently unknown roots
+            self.errors.append(SPLTypeError(
+                "SPL_PROG did not reach type 'ok'. ",
+                line=getattr(root, "line", None), node=root,
+            ))
+        
+        if strict and self.errors:
+            raise SPLTypeAnalysisFailed(self.errors)
+        
+        return ok and not self.errors
         
     #global crude rule: mod/div conflict + no decimal dot under mod
     
@@ -70,7 +71,7 @@ class TypeAnalyzer:
                 has_mod[0] = True
             elif n.kind == Kind.TERM_DIV:
                 has_div[0] = True
-            elif n.kind = Kind.NUM:
+            elif n.kind == Kind.NUM:
                 if n.value is not None and "." in n.value:
                     num_leaves_with_dot.append(n)
             for c in n.children:
@@ -80,7 +81,7 @@ class TypeAnalyzer:
         
         if has_mod[0] and has_div[0]:
             return SPLTypeError(
-                "A float-integer-conflict might occur"
+                "A float-integer-conflict might occur",
                 line=getattr(root, "line", None), node=root,
             )
             
@@ -90,7 +91,8 @@ class TypeAnalyzer:
                 for n in num_leaves_with_dot
             )
             return SPLTypeError(
-                f"Decimal numbers {offenders} are not allowed under 'mod' operator"
+                f"A decimal dot is not allowed anywhere in the program when 'mod' is used, "
+                f"but found: {offenders}",
                 line=getattr(root, "line", None), node=root,
             )
             
@@ -114,7 +116,7 @@ class TypeAnalyzer:
     #----------
         
     _PASSTHROUGH_KINDS = frozenset({
-        "SPL_PROG", "P"
+        "SPL_PROG", "P",
         "V_DECL_CONS", "F_DECL_CONS", "ALGO_CONS",
         "INSTR_PRINT", "INSTR_ASSIGN","INSTR_BRANCH", "INSTR_LOOP", "INSTR_CALL",
         "OUTP_TERM",
@@ -174,7 +176,7 @@ class TypeAnalyzer:
                 bad.append("V_DECL")
             if f_decl.type != OK:
                 bad.append("F_DECL")
-            if algo.typo != OK:
+            if algo.type != OK:
                 bad.append("ALGO")
             self._fail(n, f"P is not well-typed: {', '.join(bad)} did not resolve to 'ok'.")
     
@@ -185,9 +187,9 @@ class TypeAnalyzer:
     def _r_v_decl_cons(self, n: Node) -> None:
         #V_DECL -> NAME V_DECL
         name, tail = n.children
-        if tail.type ==OK:
+        if tail.type == OK:
             self._set_name_type(name, NUMERIC)
-            n.type = OK
+            n.type = OK if name.type != ERROR else ERROR
         else:
             self._fail(n, "V_DECL is malformed.")
     
@@ -212,7 +214,7 @@ class TypeAnalyzer:
         name, v_decl, p = n.children
         if p.type == OK and v_decl.type == OK:
             self._set_name_type(name, PROCEDURE)
-            n.type =OK
+            n.type = OK if name.type != ERROR else ERROR
         else: 
             bad = []
             if p.type != OK:
@@ -228,8 +230,8 @@ class TypeAnalyzer:
         #F_TYPE -> num NAME ( V_DECL ) { P return ( TERM ) }
         name, v_decl, p, term = n.children
         if p.type == OK and v_decl.type == OK and term.type == NUMERIC:
-            seld._set_name_type(name, NUMERIC)
-            n.type = OK
+            self._set_name_type(name, NUMERIC)
+            n.type = OK if name.type != ERROR else ERROR
         else:
             bad = []
             if p.type != OK:
@@ -310,7 +312,11 @@ class TypeAnalyzer:
         if call.type == PROCEDURE:
             n.type = OK
         else:
-            self._fail(n, "")
+            self._fail(
+                n,
+                f"A call used as an instruction must target a 'void' (procedure) function, "
+                f"but this call resolved to type '{call.type}'.",
+            )
                 
     def _r_call(self, n: Node) -> None:
         #CALL -> NAME ( INPUT )   if type_of(INPUT) is "ok" and type_of(NAME) =/= 'unknown: type_of(CALL) := type_of(NAME)
@@ -493,20 +499,6 @@ class TypeAnalyzer:
     def _r_cond(self, n: Node) -> None:
         #COND -> while | until    always "ok"
         n.type = OK
-
-    def _loop_common(self, n: Node) -> None:
-        algo, cond, bool_ = n.children
-        if algo.type == OK and cond.type == OK and bool_.type == BOOLEAN:
-            n.type = OK
-        else:
-            bad = []
-            if cond.type != OK:
-                bad.append("COND did not resolve to 'ok'")
-            if bool_.type != BOOLEAN:
-                bad.append(f"loop condition is '{bool_.type}', expected 'boolean'")
-            if algo.type != OK:
-                bad.append("loop body ALGO is not well-typed")
-            self._fail(n, f"Loop is not well-typed: {'; '.join(bad)}.")
 
     def _r_loop_pre(self, n: Node) -> None:
         #LOOP -> COND BOOL do { ALGO }

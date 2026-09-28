@@ -1,4 +1,3 @@
-
 from lexer.lexer import tokenize, LexError
 from parser.parser import parse_tokens, SyntaxError_
 
@@ -16,11 +15,10 @@ VALID_PROGRAM = (
     '#x = #square ( 5 ) ; '
     'if larger ( #x 0 ) then { print ( #x ) ; } else { nop ; } ; '
     'while eq ( #y 0 ) do { #y = 1 ; } ; '
-    '$ '
 )
 
 # Lexically valid but syntactically invalid: ASSIGN with a missing TERM.
-BROKEN_ASSIGN = '#x : : : #x = ; $ '  # '=' with nothing after it
+BROKEN_ASSIGN = '#x : : #x = ; '  # '=' with nothing after it
 
 
 if __name__ == "__main__":

@@ -18,7 +18,11 @@ EPS = () # so its actually readable
 
 # tuple of (LHS, RHS)
 PRODUCTIONS = [
-    ("SPL_PROG", ("P", "$")),
+    # The spec writes SPL_PROG -> P$, but '$' is only a meta symbol for
+    # end-of-file not a token in SPL.txt. The end marker
+    # is the '#' terminal, which the parser appends itself and slr_table
+    # treats as the accept lookahead.
+    ("SPL_PROG", ("P",)),
 
     ("P", ("V_DECL", ":", "F_DECL", ":", "ALGO")),
 

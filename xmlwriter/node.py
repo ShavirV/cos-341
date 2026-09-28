@@ -8,8 +8,14 @@ class NodeIDGenerator:
     def next_id(cls) -> int:
         return next(cls._counter)
 
+    @classmethod
+    def reset(cls) -> None:
+        """Restart numbering at 0 (call once before building a new tree)."""
+        cls._counter = count(0)
+
 class Node:
-    def __init__(self, contents: str, node_type: str, parent: Optional["Node"] = None):
+    def __init__(self, contents: str, node_type: str, parent: Optional["Node"] = None,
+                 line: Optional[int] = None):
         assert node_type in ("root", "inner", "leaf"), f"Invalid node type: {node_type}"
         
         self.id: int = NodeIDGenerator.next_id()
@@ -17,6 +23,8 @@ class Node:
         self.node_type: str = node_type
         self.parent: Optional["Node"] = parent
         self.children: list["Node"] = []
+        # source line of the token (leaves only); used for error messages later
+        self.line: Optional[int] = line
 
     def add_child(self, child: "Node") -> None:
         if(self.node_type == "leaf"):

@@ -1,0 +1,8 @@
+#x
+#y
+:
+:
+print "hello" ;
+#x = 5 ;
+print "x,value:" ;
+print ( #x ) ;

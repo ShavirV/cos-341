@@ -190,9 +190,21 @@ class TestKeywordsAndSymbols(unittest.TestCase):
 
 
 class TestDriverBehaviour(unittest.TestCase):
-    def test_missing_trailing_blank_on_last_token_rejected(self):
+    def test_last_token_may_be_followed_directly_by_eof(self):
+        self.assertEqual(kinds('#x 0'), [('NAME', '#x'), ('NUM', '0')])
+
+    def test_strict_mode_rejects_missing_trailing_blank(self):
+        import lexer.lexer as lx
+        lx.REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = True
+        try:
+            with self.assertRaises(LexError):
+                tokenize('#x 0')
+        finally:
+            lx.REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = False
+
+    def test_dollar_is_not_a_token(self):
         with self.assertRaises(LexError):
-            tokenize('#x 0')  # '0' has nothing after it
+            tokenize('#x $ ')
 
     def test_trailing_blank_present_accepted(self):
         self.assertEqual(kinds('#x 0 '), [('NAME', '#x'), ('NUM', '0')])
@@ -226,7 +238,6 @@ class TestIntegration(unittest.TestCase):
             '#x = -5 ; '
             'if eq ( #x #y ) then { print ( #x ) } else { nop } ; '
             'print "done,ok" '
-            '$ '
         )
         toks = tokenize(program)
         # spot-check a handful rather than asserting the entire stream
@@ -234,8 +245,7 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(toks[0].lexeme, '#x')
         self.assertIn(('KEYWORD', 'void'), [(t.kind, t.lexeme) for t in toks])
         self.assertIn(('STRING', '"done,ok"'), [(t.kind, t.lexeme) for t in toks])
-        self.assertEqual(toks[-1].kind, 'SYMBOL')
-        self.assertEqual(toks[-1].lexeme, '$')
+        self.assertEqual(toks[-1].kind, 'STRING')
 
 
 if __name__ == '__main__':
