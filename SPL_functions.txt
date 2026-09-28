@@ -1,0 +1,25 @@
+#x
+#y
+#result
+:
+num #add ( #a #b ) {
+#tmp
+:
+:
+#tmp = add ( #a #b ) ;
+return ( #tmp )
+}
+void #show ( #n ) {
+:
+:
+print "number:" ;
+print ( #n ) ;
+return
+}
+:
+#x = 7 ;
+#y = 3 ;
+#result = #add ( #x #y ) ;
+#show ( #result ) ;
+print "result:" ;
+print ( #result ) ;
