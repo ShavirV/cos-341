@@ -17,7 +17,10 @@ KEYWORDS = {
     "nop", "comment", "mod", "add", "sub", "mul", "div", "neg",
     "and", "or", "not", "eq", "larger", "lesser", "return",
 }
-SYMBOLS = set("(){}:;=$")
+# NOTE: '$' is deliberately NOT a symbol. it is
+# only a meta symbol for the parser's end-of-input and never appears in SPL.txt,
+# so a literal '$' in the input is a lexical error.
+SYMBOLS = set("(){}:;=")
 
 
 @dataclass
@@ -139,7 +142,9 @@ def match_string(chunk):
     if not chunk or chunk[0] != '"':
         return False, None
     if len(chunk) < 2 or chunk[-1] != '"':
-        return False, f"unterminated string: {chunk!r} has no closing '\"'"
+        return False, (f"unterminated string: {chunk!r} has no closing '\"'. "
+                       f"Hint: SPL strings cannot contain spaces (a space ends the token), "
+                       f"so \"hello world\" is invalid - use e.g. \"hello,world\"")
     body = chunk[1:-1]
     for i, c in enumerate(body, start=1):
         if c not in STRING_CHARS:
@@ -182,14 +187,24 @@ def classify(chunk):
 
     if reasons:
         return None, reasons[0]
-    return None, (f"{chunk!r} is not a keyword, symbol, or a valid "
-                   f"NUM / USER-DEFINED-NAME / STRING token")
+    msg = (f"{chunk!r} is not a keyword, symbol, or a valid "
+           f"NUM / USER-DEFINED-NAME / STRING token")
+    if chunk == '$':
+        msg += (". Hint: '$' is not part of SPL - it is only the parser's internal "
+                "end-of-file marker, so remove it from the file")
+    elif len(chunk) > 1 and (chunk[0] in SYMBOLS or chunk[-1] in SYMBOLS):
+        msg += (". Hint: every token must be followed by a blank, including "
+                "symbols - write '( x )' not '(x)'")
+    return None, msg
 
 
 # ---------------------------------------------------------------------------
 # Driver: split on blanks, classify each chunk, track line/col incrementally
 # ---------------------------------------------------------------------------
-REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = True
+# The spec says every token ends with blank_space, but a valid program should
+# not be rejected just because the file has no newline at the very end, so the
+# last token may be followed by EOF directly. Set True for the strict reading.
+REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = False
 
 
 def tokenize(text):
@@ -238,7 +253,7 @@ def tokenize(text):
 
 
 if __name__ == "__main__":
-    good = '#x 0 -0.5 5 -5 0.5 "hello,world" if while $ '
+    good = '#x 0 -0.5 5 -5 0.5 "hello,world" if while '
     print("--- valid program fragment ---")
     for tok in tokenize(good):
         print(tok)
@@ -252,7 +267,7 @@ if __name__ == "__main__":
         '--5 ',            # double minus
         '#h@llo ',         # bad char in name
         'foo ',            # not a keyword/symbol/anything
-        '#x 0',            # missing trailing blank on last token
+        '#x $ ',           # '$' is not part of the SPL language
     ]
     for s in bad_cases:
         try:

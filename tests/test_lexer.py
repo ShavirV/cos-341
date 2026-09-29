@@ -1,5 +1,5 @@
 """
-Test suite for lexer2.py
+Test suite for lexer.py
 
 Testing strategy
 -----------------
@@ -23,7 +23,7 @@ Run with:  python3 -m unittest test_lexer.py -v
 """
 
 import unittest
-from lexer2 import tokenize, classify, LexError, Token
+from lexer.lexer import tokenize, classify, LexError, Token
 
 
 def kinds(text):
@@ -32,7 +32,7 @@ def kinds(text):
 
 
 class TestNumTransitionCoverage(unittest.TestCase):
-    # State diagram being covered (see lexer2.run_num):
+    # State diagram being covered (see lexer.run_num):
     #   A -(-)-> D        A -(0)-> C        A -(1..9)-> B
     #   D -(0)-> Z        D -(1..9)-> B
     #   Z -(.)-> GH
@@ -170,12 +170,12 @@ class TestStringTransitionCoverage(unittest.TestCase):
 
 class TestKeywordsAndSymbols(unittest.TestCase):
     def test_all_keywords_recognized(self):
-        from lexer2 import KEYWORDS
+        from lexer.lexer import KEYWORDS
         for kw in KEYWORDS:
             self.assertEqual(kinds(f'{kw} '), [('KEYWORD', kw)], msg=kw)
 
     def test_all_symbols_recognized(self):
-        from lexer2 import SYMBOLS
+        from lexer.lexer import SYMBOLS
         for sym in SYMBOLS:
             self.assertEqual(kinds(f'{sym} '), [('SYMBOL', sym)], msg=sym)
 
@@ -190,9 +190,21 @@ class TestKeywordsAndSymbols(unittest.TestCase):
 
 
 class TestDriverBehaviour(unittest.TestCase):
-    def test_missing_trailing_blank_on_last_token_rejected(self):
+    def test_last_token_may_be_followed_directly_by_eof(self):
+        self.assertEqual(kinds('#x 0'), [('NAME', '#x'), ('NUM', '0')])
+
+    def test_strict_mode_rejects_missing_trailing_blank(self):
+        import lexer.lexer as lx
+        lx.REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = True
+        try:
+            with self.assertRaises(LexError):
+                tokenize('#x 0')
+        finally:
+            lx.REQUIRE_TRAILING_BLANK_AFTER_LAST_TOKEN = False
+
+    def test_dollar_is_not_a_token(self):
         with self.assertRaises(LexError):
-            tokenize('#x 0')  # '0' has nothing after it
+            tokenize('#x $ ')
 
     def test_trailing_blank_present_accepted(self):
         self.assertEqual(kinds('#x 0 '), [('NAME', '#x'), ('NUM', '0')])
@@ -226,7 +238,6 @@ class TestIntegration(unittest.TestCase):
             '#x = -5 ; '
             'if eq ( #x #y ) then { print ( #x ) } else { nop } ; '
             'print "done,ok" '
-            '$ '
         )
         toks = tokenize(program)
         # spot-check a handful rather than asserting the entire stream
@@ -234,8 +245,7 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(toks[0].lexeme, '#x')
         self.assertIn(('KEYWORD', 'void'), [(t.kind, t.lexeme) for t in toks])
         self.assertIn(('STRING', '"done,ok"'), [(t.kind, t.lexeme) for t in toks])
-        self.assertEqual(toks[-1].kind, 'SYMBOL')
-        self.assertEqual(toks[-1].lexeme, '$')
+        self.assertEqual(toks[-1].kind, 'STRING')
 
 
 if __name__ == '__main__':

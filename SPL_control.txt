@@ -1,0 +1,21 @@
+#x
+#y
+#z
+:
+:
+#x = 10 ;
+#y = 3 ;
+if lesser ( #y #x ) then {
+print "y,is,smaller" ;
+#z = sub ( #x #y ) ;
+} else {
+nop ;
+} ;
+while lesser ( #z #x ) do {
+#z = add ( #z 1 ) ;
+print ( #z ) ;
+} ;
+do {
+#x = sub ( #x 1 ) ;
+} until eq ( #x 0 ) ;
+print "done" ;
