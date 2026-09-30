@@ -139,7 +139,7 @@ def _run_main(tmp_path, source, *flags):
     out = tmp_path / "tree.xml"
     src.write_text(source)
     proc = subprocess.run(
-        [sys.executable, str(REPO / "main.py"), str(src), "-o", str(out), *flags],
+        [sys.executable, str(REPO / "group_14_cli.py"), str(src), "-o", str(out), *flags],
         capture_output=True, text=True, cwd=REPO,
     )
     return proc, out

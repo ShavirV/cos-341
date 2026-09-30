@@ -16,9 +16,13 @@ from .slr_table import build_slr_table, GrammarConflictError, PRODS
 
 
 class SyntaxError_(Exception):
-    def __init__(self, message: str, hint: str = ""):
+    def __init__(self, message: str, hint: str = "", line=None, col=None):
         full = message + (f"\n  Hint: {hint}" if hint else "")
         super().__init__(full)
+        # position of the offending token (None when the input ended too early);
+        # used by the GUI to highlight the line
+        self.line = line
+        self.col = col
 
 
 # basically just an adapter from what I assumed to what was built in lexer.py
@@ -107,7 +111,9 @@ class Parser:
                 got = "end of input" if at_end else f"'{_token_text(tok)}'"
                 raise SyntaxError_(
                     f"Syntax error at {where}: unexpected {got}.",
-                    f"Expected one of: {', '.join(expected)}"
+                    f"Expected one of: {', '.join(expected)}",
+                    line=None if at_end else _token_line(tok),
+                    col=None if at_end else _token_col(tok),
                 )
 
             if action[0] == "shift":
