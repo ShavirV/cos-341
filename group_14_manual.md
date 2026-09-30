@@ -1,3 +1,10 @@
+# Team Members
+
+- Shavir Vallabh u23718146
+- Warona Moleboge u23770912
+- Kundai Ndemera u23941996
+- Siyabonga Sibiya u23976072
+
 # SPL Front End
 
 A lexer, parser and (optional) type analyser for the Students' Programming
@@ -12,7 +19,7 @@ commands from the project folder.
 
 | | **Option 1: GUI** | **Option 2: Command line** |
 |---|---|---|
-| Start it with | `python spl_gui.py` | `python main.py SPL.txt` |
+| Start it with | `python group_14_gui.py` | `python group_14_cli.py SPL.txt` |
 | Best for | Trying programs out, seeing the tree, fixing errors | Producing `tree.xml` quickly, scripting |
 | You get | A window with an editor, syntax tree view and error messages | `tree.xml` on disk, or an error message |
 
@@ -21,11 +28,11 @@ Both use the same lexer and parser and produce the same `tree.xml`.
 ### Option 1: the GUI
 
 ```bash
-python spl_gui.py              # starts with a built-in sample program
-python spl_gui.py SPL.txt      # opens and runs a file straight away
+python group_14_gui.py              # starts with a built-in sample program
+python group_14_gui.py SPL.txt      # opens and runs a file straight away
 ```
 
-On Windows you can usually also double-click `spl_gui.py`.
+On Windows you can usually also double-click `group_14_gui.py`.
 
 1. **Load a program.** Click **Open SPL file...** (Ctrl+O), or type/paste
    into the source pane on the left. The pane is editable.
@@ -59,7 +66,7 @@ Good to know:
 ### Option 2: the command line
 
 ```bash
-python main.py SPL.txt
+python group_14_cli.py SPL.txt
 ```
 
 This reads `SPL.txt` and, on success, writes `tree.xml` in the current
@@ -68,7 +75,7 @@ directory. Three more example programs are included (`SPL_simple.txt`,
 and loops, and function declarations.
 
 ```
-python main.py [source] [-o OUTPUT] [--typecheck]
+python group_14_cli.py [source] [-o OUTPUT] [--typecheck]
 ```
 
 | Argument | Meaning |
@@ -79,29 +86,29 @@ python main.py [source] [-o OUTPUT] [--typecheck]
 | `-h`, `--help` | Show usage and exit. |
 
 ```bash
-python main.py                                   # read SPL.txt, write tree.xml
-python main.py my_program.txt -o output/tree.xml # explicit input and output
-python main.py SPL.txt --typecheck               # also run type checking
+python group_14_cli.py                                   # read SPL.txt, write tree.xml
+python group_14_cli.py my_program.txt -o output/tree.xml # explicit input and output
+python group_14_cli.py SPL.txt --typecheck               # also run type checking
 ```
 
 **Success** looks like this:
 
 ```
-$ python main.py SPL_simple.txt
+$ python group_14_cli.py SPL_simple.txt
 Syntax OK. Syntax tree written to tree.xml
 ```
 
 **Errors** are printed with the position and, where possible, a hint:
 
 ```
-$ python main.py broken.txt
+$ python group_14_cli.py broken.txt
 Syntax error at line 4, col 6: unexpected ';'.
   Hint: Expected one of: NUM, USER-DEFINED-NAME, add, div, mod, mul, neg, sub
 
-$ python main.py lex.txt
+$ python group_14_cli.py lex.txt
 Lexical error at line 4, col 7: unterminated string: '"hello' has no closing '"'. Hint: SPL strings cannot contain spaces (a space ends the token), so "hello world" is invalid - use e.g. "hello,world"
 
-$ python main.py prog.txt --typecheck
+$ python group_14_cli.py prog.txt --typecheck
 Syntax OK. Syntax tree written to tree.xml
 TYPE ERROR (line 4): Assignment is not well-typed: target '#y' has type 'unknown', expected 'numeric'.
 ```
@@ -154,8 +161,8 @@ test (lexing, parsing, XML writing and type checking together), and the GUI.
 ## Project layout
 
 ```
-main.py              command-line entry point (Option 2)
-spl_gui.py           GUI entry point (Option 1)
+group_14_cli.py              command-line entry point (Option 2)
+group_14_gui.py           GUI entry point (Option 1)
 spl_pipeline.py      lex -> parse -> XML (-> type check) as a function; used by the GUI
 lexer/               tokenizer: SPL text -> list of tokens
 parser/              SLR(1) parser: tokens -> syntax tree (see parser/grammar.py)
