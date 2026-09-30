@@ -72,7 +72,7 @@ class App:
             self.set_source(SAMPLE, "sample program - use Open to load your own")
             self.run()
 
-    # ------------------------------------------------------------------ UI
+    # UI
     def _build_widgets(self):
         root = self.root
         style = ttk.Style()
@@ -201,7 +201,7 @@ class App:
         line, col = self.editor.index("insert").split(".")
         self.cursor_label.set(f"Ln {line}, Col {int(col) + 1}")
 
-    # -------------------------------------------------------------- source
+    # source
     def set_source(self, text: str, label: str):
         self.editor.delete("1.0", "end")
         self.editor.insert("1.0", text)
@@ -236,7 +236,7 @@ class App:
         if path and self.load_file(path):
             self.run()
 
-    # ------------------------------------------------------------------ run
+    # run
     def run(self):
         text = self.editor.get("1.0", "end-1c")
         if not text.strip():
@@ -301,7 +301,7 @@ class App:
                 self._update_cursor()
             break   # only the first located problem
 
-    # ----------------------------------------------------------- tree view
+    # tree view
     def _fill_tree(self, res):
         stack = [("", res.tree)]
         shown = 0
@@ -332,7 +332,7 @@ class App:
             for iid in self.tree.get_children():
                 self.tree.item(iid, open=True)
 
-    # ------------------------------------------------------------ messages
+    # messages
     @staticmethod
     def _set_text(widget: tk.Text, text: str):
         widget.configure(state="normal")

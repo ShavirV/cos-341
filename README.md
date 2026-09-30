@@ -1,41 +1,71 @@
 # SPL Front End
 
-Semester assignment for COS 341 (Compiler Construction) - a lexer, parser,
-and (optional) type analyser for the Students' Programming Language (SPL),
-per the practical's syntax specification.
+A lexer, parser and (optional) type analyser for the Students' Programming
+Language (SPL), built for the COS 341 semester practical. Give it an SPL
+program and it either writes the program's syntax tree to `tree.xml` or tells
+you exactly what is wrong with it.
 
-Given an SPL source file, this program either:
+## Two ways to run it
 
-- reports a lexical or syntax error and exits with a non-zero status, or
-- writes the program's syntax tree to `tree.xml`.
+You only need **Python 3.10 or later**. There is nothing to install. Run all
+commands from the project folder.
 
-`tree.xml` is the graded artifact - the tutors check that file, not the code
-that produced it.
+| | **Option 1: GUI** | **Option 2: Command line** |
+|---|---|---|
+| Start it with | `python spl_gui.py` | `python main.py SPL.txt` |
+| Best for | Trying programs out, seeing the tree, fixing errors | Producing `tree.xml` quickly, scripting |
+| You get | A window with an editor, syntax tree view and error messages | `tree.xml` on disk, or an error message |
 
-## Requirements
+Both use the same lexer and parser and produce the same `tree.xml`.
 
-- Python 3.10 or later. No third-party packages are needed; only the
-  standard library is used.
+### Option 1: the GUI
 
-## Running it
+```bash
+python spl_gui.py              # starts with a built-in sample program
+python spl_gui.py SPL.txt      # opens and runs a file straight away
+```
 
-From the repository root:
+On Windows you can usually also double-click `spl_gui.py`.
+
+1. **Load a program.** Click **Open SPL file...** (Ctrl+O), or type/paste
+   into the source pane on the left. The pane is editable.
+2. **Run it.** Click **Run** (F5 or Ctrl+Enter). Opening a file runs it
+   automatically.
+3. **Read the result.**
+
+   | Where | What you see |
+   |---|---|
+   | **Result** pane (bottom) | A green tick and the node count on success, or the error message and hint |
+   | **SPL source** pane (left) | On an error, the bad line is highlighted and the cursor is put on the bad token |
+   | **Syntax tree** tab | The tree, expandable. Each node shows its unique id as `[n]`. Tokens are green; empty (nullable) rules are grey with an epsilon |
+   | **tree.xml** tab | The exact text that will be saved |
+
+4. **Save the output.** Click **Save tree.xml...** (Ctrl+S). The button is
+   enabled only after a successful parse, and the saved file is identical to
+   what the command line produces.
+5. **Fix and re-run.** Edit the source pane and press Run again.
+
+Tick **Also run type analysis** to run the optional type checker after a
+successful parse (the same as `--typecheck` on the command line). Type errors
+are listed with their line numbers; the syntax tree is still produced.
+
+Good to know:
+
+- The Tab key types four spaces (a real tab character is a lexical error in SPL).
+- Files must be plain ASCII.
+- For very large programs the tree view shows only the first 6000 nodes. The
+  **tree.xml** tab and the saved file are always complete.
+
+### Option 2: the command line
 
 ```bash
 python main.py SPL.txt
 ```
 
-This reads `SPL.txt`, and on success writes `tree.xml` in the current
-directory. Three more example programs are included - `SPL_simple.txt`,
-`SPL_control.txt`, `SPL_functions.txt` - covering a plain program, branches
-and loops, and function declarations, respectively. Try any of them the same
-way:
-
-```bash
-python main.py SPL_control.txt
-```
-
-### Command-line options
+This reads `SPL.txt` and, on success, writes `tree.xml` in the current
+directory. Three more example programs are included (`SPL_simple.txt`,
+`SPL_control.txt`, `SPL_functions.txt`), covering a plain program, branches
+and loops, and function declarations.
 
 ```
 python main.py [source] [-o OUTPUT] [--typecheck]
@@ -44,53 +74,45 @@ python main.py [source] [-o OUTPUT] [--typecheck]
 | Argument | Meaning |
 |---|---|
 | `source` | Path to the SPL source file. Defaults to `SPL.txt` in the current directory. |
-| `-o OUTPUT`, `--output OUTPUT` | Where to write the XML output. Defaults to `tree.xml`. |
+| `-o OUTPUT`, `--output OUTPUT` | Where to write the XML. Defaults to `tree.xml`. |
 | `--typecheck` | After a successful parse, also run type analysis and report any type errors. |
 | `-h`, `--help` | Show usage and exit. |
 
-Examples:
-
 ```bash
-# Default: read SPL.txt, write tree.xml
-python main.py
-
-# Explicit input and output paths
-python main.py my_program.txt -o output/tree.xml
-
-# Also run type checking
-python main.py SPL.txt --typecheck
+python main.py                                   # read SPL.txt, write tree.xml
+python main.py my_program.txt -o output/tree.xml # explicit input and output
+python main.py SPL.txt --typecheck               # also run type checking
 ```
 
-### Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Success. `tree.xml` was written (and, with `--typecheck`, the program is well-typed). |
-| `1` | A lexical, syntax, or (with `--typecheck`) type error was found. The error is printed to stderr; no `tree.xml` is written, and a stale one from an earlier run is deleted. |
-| `2` | The source file couldn't be read (missing file, permissions, or the file isn't plain ASCII). |
-
-### What "success" looks like
+**Success** looks like this:
 
 ```
 $ python main.py SPL_simple.txt
 Syntax OK. Syntax tree written to tree.xml
 ```
 
-### What an error looks like
+**Errors** are printed with the position and, where possible, a hint:
 
 ```
 $ python main.py broken.txt
-Lexical error at line 1, col 1: 'bad$token' is not a keyword, symbol,
-or a valid NUM / USER-DEFINED-NAME / STRING token
+Syntax error at line 4, col 6: unexpected ';'.
+  Hint: Expected one of: NUM, USER-DEFINED-NAME, add, div, mod, mul, neg, sub
+
+$ python main.py lex.txt
+Lexical error at line 4, col 7: unterminated string: '"hello' has no closing '"'. Hint: SPL strings cannot contain spaces (a space ends the token), so "hello world" is invalid - use e.g. "hello,world"
+
+$ python main.py prog.txt --typecheck
+Syntax OK. Syntax tree written to tree.xml
+TYPE ERROR (line 4): Assignment is not well-typed: target '#y' has type 'unknown', expected 'numeric'.
 ```
 
-A syntax error additionally names the token position and lists what the
-parser would have accepted there, for example:
+Exit codes:
 
-```
-Syntax error at line 3, col 9: unexpected ';'.
-  Hint: Expected one of: (, NUM, USER-DEFINED-NAME, add, div, mod, mul, neg, sub
-```
+| Code | Meaning |
+|---|---|
+| `0` | Success. `tree.xml` was written (and, with `--typecheck`, the program is well-typed). |
+| `1` | A lexical, syntax, or (with `--typecheck`) type error was found. The error is printed to stderr. For lexical and syntax errors no `tree.xml` is written, and a stale one from an earlier run is deleted. |
+| `2` | The source file couldn't be read (missing file, permissions, or not plain ASCII). |
 
 ## The output: `tree.xml`
 
@@ -102,46 +124,44 @@ depend on the kind of node, per the spec:
 - **inner node** - `id`, `contents`, `children`, `parent`
 - **leaf node** - `id`, `contents`, `parent` (no `children`)
 
-`id` is a unique, tree-wide integer; `children` lists the `id`s of the
-node's immediate children; `contents` is the grammar non-terminal for an
-inner/root node, or the literal token text for a leaf. These `id`s are
-designed to later double as foreign keys into a semantic data table for
-name-scope and type analysis.
+`id` is a unique, tree-wide integer; `children` lists the `id`s of the node's
+immediate children; `contents` is the grammar non-terminal for a root or inner
+node, or the literal token text for a leaf. These `id`s are designed to later
+double as foreign keys into a semantic data table for name-scope and type
+analysis.
 
 ## Running the tests
 
 ```bash
-python -m unittest discover -s tests -t .
+pip install pytest
+python test.py
 ```
 
-This covers the lexer, the parser, the type analyser, and an end-to-end
-pipeline test that runs a full program through lexing, parsing, XML
-writing, and type checking together.
+This covers the lexer, the parser, the type analyser, an end-to-end pipeline
+test (lexing, parsing, XML writing and type checking together), and the GUI.
+
+(`python -m unittest discover -s tests -t .` also works, but only runs the
+`unittest`-style tests, not the whole suite.)
+
+## Setup notes
+
+- **tkinter** (used only by the GUI) is included with the standard Python
+  installers for Windows and macOS. On Debian/Ubuntu install it with
+  `sudo apt install python3-tk`. The command-line program does not need it.
+- No third-party packages are used anywhere in the program. `pytest` is only
+  needed to run the tests.
 
 ## Project layout
 
 ```
-main.py             CLI entry point - the program described above
-lexer/               tokenizer: SPL.txt -> List[Token]
-parser/               SLR(1) parser: tokens -> syntax tree (see parser/grammar.py)
-xmlwriter/            syntax tree -> tree.xml
-semantics/            optional type analysis (--typecheck), built on the
-                      syntax tree via semantics/cst_to_ast.py
-tests/               unit tests for the above, plus the pipeline test
+main.py              command-line entry point (Option 2)
+spl_gui.py           GUI entry point (Option 1)
+spl_pipeline.py      lex -> parse -> XML (-> type check) as a function; used by the GUI
+lexer/               tokenizer: SPL text -> list of tokens
+parser/              SLR(1) parser: tokens -> syntax tree (see parser/grammar.py)
+xmlwriter/           syntax tree -> tree.xml
+semantics/           optional type analysis (--typecheck), built on the
+                     syntax tree via semantics/cst_to_ast.py
+tests/               unit tests for the above, plus the pipeline and GUI tests
 SPL.txt, SPL_*.txt   example SPL programs
 ```
-
-## Design notes worth knowing
-
-- **Blank-delimited tokenization.** Per the spec, every token must be
-  followed by blank space (`' '`, `'\r'`, or `'\n'`); the lexer splits on
-  blanks first, then classifies each chunk as a whole. The one exception is
-  the end-of-program marker `$`, which may be the very last character in
-  the file with no trailing blank after it.
-- **SLR(1) parser.** The grammar's only ambiguity - a `USER-DEFINED-NAME`
-  that could start a bare `TERM`, an `ASSIGN`, or a `CALL` - is resolved
-  naturally by the shift/reduce parser rather than by extra lookahead; the
-  grammar builds with zero shift/reduce or reduce/reduce conflicts.
-- **Type analysis is optional and separate.** It isn't part of the graded
-  syntax-phase output; it's included here as a head start on the next
-  phase of the project, run only when `--typecheck` is passed.
