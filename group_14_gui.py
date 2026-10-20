@@ -89,8 +89,11 @@ class App:
         ttk.Button(bar, text="Open SPL file...", command=self.open_file).pack(side="left")
         ttk.Button(bar, text="\u25b6  Run", style="Run.TButton",
                    command=self.run).pack(side="left", padx=(8, 0))
+        self.scope_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(bar, text="Also run scope analysis",
+                        variable=self.scope_var).pack(side="left", padx=(12, 0))
         self.typecheck_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bar, text="Also run type analysis",
+        ttk.Checkbutton(bar, text="Also run type analysis (includes scope)",
                         variable=self.typecheck_var).pack(side="left", padx=12)
         self.save_btn = ttk.Button(bar, text="Save tree.xml...", command=self.save_xml,
                                    state="disabled")
@@ -243,7 +246,8 @@ class App:
             self._clear_results()
             self._show([("Nothing to run - open a file or type an SPL program first.\n", "info")])
             return
-        self.result = analyze(text, typecheck=self.typecheck_var.get())
+        self.result = analyze(text, typecheck=self.typecheck_var.get(),
+                              scopecheck=self.scope_var.get())
         self._render(self.result)
 
     def _clear_results(self):
@@ -266,6 +270,8 @@ class App:
             self.tabs.select(0)
             parts.append((f"\u2714 Syntax OK - syntax tree has {res.node_count} nodes. "
                           f"Use \"Save tree.xml...\" to export it.\n", "ok"))
+            if res.scope_checked and not any(p.kind == "scope" for p in res.problems):
+                parts.append(("\u2714 Scope analysis OK.\n", "ok"))
             if res.type_checked and not res.problems:
                 parts.append(("\u2714 Type analysis OK.\n", "ok"))
         else:
@@ -278,6 +284,9 @@ class App:
 
     @staticmethod
     def _format_problem(p) -> str:
+        if p.kind == "scope":
+            where = f" (line {p.line})" if p.line is not None else ""
+            return f"\u2718 Scope error{where}: {p.message}"
         if p.kind == "type":
             where = f" (line {p.line})" if p.line is not None else ""
             return f"\u2718 Type error{where}: {p.message}"
