@@ -32,3 +32,28 @@ class SPLTypeAnalysisFailed(Exception):
         self.errors = errors
         msg = "\n".join(str(e) for e in errors)
         super().__init__(f"SPL type analysis failed with {len(errors)} error(s):\n{msg}")
+
+
+class SPLScopeError:
+    """A violation of the scope/name rules of phase 2a."""
+
+    def __init__(self, message: str, line: Optional[int] = None, node=None):
+        self.message = message
+        self.line = line
+        self.node = node
+
+    def __str__(self):
+        loc = f" (line {self.line})" if self.line is not None else ""
+        return f"SCOPE ERROR{loc}: {self.message}"
+
+    def __repr__(self):
+        return str(self)
+
+
+class SPLScopeAnalysisFailed(Exception):
+    """Raised by ScopeAnalyzer.analyze() (strict mode) when scope errors were found."""
+
+    def __init__(self, errors: List[SPLScopeError]):
+        self.errors = errors
+        msg = "\n".join(str(e) for e in errors)
+        super().__init__(f"SPL scope analysis failed with {len(errors)} error(s):\n{msg}")
