@@ -336,6 +336,111 @@ def test_conflicting_declared_types_for_same_sys_name_is_error():
     assert any("conflicting types" in e.message and "f_1" in e.message for e in errors)
 
 
+# 11. The mod/div error must use the exact wording from the 2b spec sheet.
+
+def test_mod_div_conflict_uses_spec_wording():
+    v = v_decl("x_1")
+    a = algo(
+        instr_assign("x_1", term_bin(Kind.TERM_MOD, term_num("7"), term_num("2"))),
+        instr_assign("x_1", term_bin(Kind.TERM_DIV, term_num("7"), term_num("2"))),
+    )
+    ok, errors, _ = run(prog(v, f_decl(), a))
+    assert not ok
+    assert len(errors) == 1
+    assert errors[0].message.startswith("A float-integer-conflict might perhaps be possible")
+
+
+# 12. number_type: the int/float decision that code generation (phase 3a) needs
+#     to declare its temporary variables.
+
+def _number_type(*instrs):
+    ta = TypeAnalyzer()
+    ok = ta.analyze(prog(v_decl("x_1"), f_decl(), algo(*instrs)), strict=False)
+    assert ok, ta.errors
+    return ta.number_type
+
+
+def test_number_type_is_int_when_mod_is_used():
+    t = term_bin(Kind.TERM_MOD, term_num("7"), term_num("2"))
+    assert _number_type(instr_assign("x_1", t)) == "int"
+
+
+def test_number_type_is_float_when_div_is_used():
+    # integer literals only, but div still forces real numbers
+    t = term_bin(Kind.TERM_DIV, term_num("7"), term_num("2"))
+    assert _number_type(instr_assign("x_1", t)) == "float"
+
+
+def test_number_type_is_float_for_a_decimal_literal_without_div():
+    assert _number_type(instr_assign("x_1", term_num("2.5"))) == "float"
+
+
+def test_number_type_is_int_for_plain_whole_numbers():
+    t = term_bin(Kind.TERM_ADD, term_num("7"), term_num("2"))
+    assert _number_type(instr_assign("x_1", t)) == "int"
+
+
+def test_number_type_is_reset_between_runs():
+    # the same analyzer object reused for a second program must not keep the old answer
+    ta = TypeAnalyzer()
+    div = term_bin(Kind.TERM_DIV, term_num("7"), term_num("2"))
+    ta.analyze(prog(v_decl("x_1"), f_decl(), algo(instr_assign("x_1", div))), strict=False)
+    assert ta.number_type == "float"
+    ta.analyze(prog(v_decl("y_1"), f_decl(), algo(instr_assign("y_1", term_num("3")))), strict=False)
+    assert ta.number_type == "int"
+
+
+# 13. Cascade control beyond the pass-through nodes.
+
+def test_call_to_broken_function_is_not_reported_again():
+    # num g() { return (never_declared) }  ...  x = g();
+    # Expected: the root cause + the line naming g_1, and nothing at the call site,
+    # because g_1's header already says it is a num function.
+    g_p = Node(Kind.P, children=[v_decl(), f_decl(), algo()])
+    num_func = Node(Kind.F_TYPE_NUM, children=[NAME("g_1"), v_decl(), g_p, term_name("never_declared")])
+    a = algo(instr_assign("x_1", term_call("g_1")))
+    ok, errors, _ = run(prog(v_decl("x_1"), f_decl(num_func), a))
+    assert not ok
+    assert len(errors) == 2, f"expected exactly 2 errors, got {len(errors)}: {errors}"
+    assert not any("Call to" in e.message or "undeclared/untyped" in e.message for e in errors)
+
+
+def test_fault_deep_in_an_expression_yields_single_error():
+    # x = add(mul(ghost 2) 1): mul, add and the assignment must stay quiet
+    inner = term_bin(Kind.TERM_MUL, term_name("ghost"), term_num("2"))
+    outer = term_bin(Kind.TERM_ADD, inner, term_num("1"))
+    ok, errors, _ = run(prog(v_decl("x_1"), f_decl(), algo(instr_assign("x_1", outer))))
+    assert not ok
+    assert len(errors) == 1, f"expected exactly 1 error, got {len(errors)}: {errors}"
+    assert "ghost" in errors[0].message
+
+
+def test_fault_inside_a_branch_yields_single_error():
+    cond = Node(Kind.BOOL_EQ, children=[term_name("x_1"), term_num("1")])
+    branch = Node(Kind.BRANCH, children=[
+        cond,
+        algo(instr_assign("x_1", term_name("ghost"))),
+        algo(instr_nop()),
+    ])
+    a = algo(Node(Kind.INSTR_BRANCH, children=[branch]))
+    ok, errors, _ = run(prog(v_decl("x_1"), f_decl(), a))
+    assert not ok
+    assert len(errors) == 1, f"expected exactly 1 error, got {len(errors)}: {errors}"
+
+
+def test_independent_faults_are_all_reported():
+    # suppressing follow-up errors must not hide separate mistakes
+    a = algo(
+        instr_assign("x_1", term_name("ghost_a")),
+        instr_print_term(term_name("ghost_b")),
+    )
+    ok, errors, _ = run(prog(v_decl("x_1"), f_decl(), a))
+    assert not ok
+    assert len(errors) == 2, f"expected exactly 2 errors, got {len(errors)}: {errors}"
+    assert any("ghost_a" in e.message for e in errors)
+    assert any("ghost_b" in e.message for e in errors)
+
+
 
 # main: allow running this file directly without pytest
 
