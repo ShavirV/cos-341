@@ -15,9 +15,11 @@ COMPARE_OPS = {
 }
 
 def generate_program(ast, symtab, number_type):
-    """Return the generated C++ source for the ALGO part of an SPL program (phase 3a)."""
+    """Return generated C++ source for an SPL program."""
     gen = CodeGenerator(number_type)
-    algo = ast.children[0].children[2]        # SPL_PROG -> P -> (V_DECL, F_DECL, ALGO)
+    program = ast.children[0]
+    gen.set_functions(program.children[1])
+    algo = program.children[2]                # P -> (V_DECL, F_DECL, ALGO)
     body = gen.trans_algo(algo)
     decls = "\n".join(
         f"{number_type} {name};"
@@ -30,6 +32,22 @@ class CodeGenerator:
         self.typ = number_type      # "int" or "float", from the type analyser
         self._var_count = 0
         self._label_count = 0
+        self._functions = {}
+
+    def set_functions(self, f_decl):
+        """Set the functions visible in the current block."""
+        self._functions = {
+            function.children[0].sym_id: function
+            for function in self._list_items(f_decl, Kind.F_DECL_CONS)
+        }
+
+    @staticmethod
+    def _list_items(node, cons_kind):
+        items = []
+        while node.kind == cons_kind:
+            items.append(node.children[0])
+            node = node.children[1]
+        return items
 
     # ---------- fresh names ----------
 
@@ -63,6 +81,8 @@ class CodeGenerator:
             return f"/* {self._string_text(node)} */"
         if k == Kind.INSTR_ASSIGN:
             return self.trans_assign(node.children[0])
+        if k == Kind.INSTR_CALL:
+            return self.trans_call(node.children[0])
         if k == Kind.INSTR_BRANCH:
             return self.trans_branch(node.children[0])
         if k == Kind.INSTR_LOOP:
@@ -82,6 +102,40 @@ class CodeGenerator:
         code = self.trans_term(term, v)
         return "\n".join([f"{self.typ} {v};", code, f"{name.sym_id} = {v};"])
 
+    def trans_call(self, node, result=None):
+        """Inline a function call at its call site."""
+        function = self._functions.get(node.children[0].sym_id)
+        if function is None:
+            raise ValueError(f"function definition not found for {node.children[0].value}")
+
+        params = self._list_items(function.children[1], Kind.V_DECL_CONS)
+        args = self._list_items(node.children[1], Kind.INPUT_CONS)
+        if len(params) != len(args):
+            raise ValueError(
+                f"function {node.children[0].value} expects {len(params)} arguments, "
+                f"got {len(args)}"
+            )
+
+        parts = ["/* call */"]
+        for param, arg in zip(params, args):
+            value = self.new_var()
+            parts.extend([
+                f"{self.typ} {value};",
+                self.trans_term(arg, value),
+                f"{param.sym_id} = {value};",
+            ])
+
+        body = function.children[2]
+        previous_functions = self._functions
+        self.set_functions(body.children[1])
+        parts.append(self.trans_algo(body.children[2]))
+        if result is not None:
+            if function.kind != Kind.F_TYPE_NUM:
+                raise ValueError(f"void function {node.children[0].value} used as a value")
+            parts.append(self.trans_term(function.children[3], result))
+        self._functions = previous_functions
+        return "\n".join(parts)
+
     # ---------- TERM ----------
 
     def trans_term(self, node, result):
@@ -91,6 +145,8 @@ class CodeGenerator:
             return f"{result} = {num};"
         if k == Kind.TERM_NAME:
             return f"{result} = {node.children[0].sym_id};"
+        if k == Kind.TERM_CALL:
+            return self.trans_call(node.children[0], result)
         if k in BINARY_OPS:
             x, y = self.new_var(), self.new_var()
             code1 = self.trans_term(node.children[0], x)

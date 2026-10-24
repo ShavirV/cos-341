@@ -79,6 +79,28 @@ FLOAT = """#x :
 print ( #x ) ;
 """
 
+FUNCTIONS = """#x #result :
+num #add ( #a #b ) {
+#tmp :
+:
+#tmp = add ( #a #b ) ;
+return ( #tmp )
+}
+void #show ( #n ) {
+:
+:
+print "number:" ;
+print ( #n ) ;
+return
+}
+:
+#x = 7 ;
+#result = #add ( #x 3 ) ;
+#show ( #result ) ;
+print "result:" ;
+print ( #result ) ;
+"""
+
 
 class TestGeneratedText(unittest.TestCase):
     def test_print_string(self):
@@ -125,6 +147,11 @@ class TestGeneratedText(unittest.TestCase):
     def test_ends_with_end_marker_per_algo(self):
         self.assertIn("/* end */", gen(SIMPLE))
 
+    def test_function_calls_are_inlined(self):
+        code = gen(FUNCTIONS)
+        self.assertIn("/* call */", code)
+        self.assertNotIn("TERM_CALL", code)
+
 
 @unittest.skipUnless(HAS_GPP, "g++ not installed")
 class TestRunsCorrectly(unittest.TestCase):
@@ -143,6 +170,9 @@ class TestRunsCorrectly(unittest.TestCase):
 
     def test_float_division(self):
         self.assertEqual(run_cpp(gen(FLOAT)), "3.5")
+
+    def test_numeric_and_void_function_calls(self):
+        self.assertEqual(run_cpp(gen(FUNCTIONS)), "number:10result:10")
 
 
 if __name__ == "__main__":
