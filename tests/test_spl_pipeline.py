@@ -41,11 +41,18 @@ class AnalyzeTests(unittest.TestCase):
         self.assertEqual(analyze("#x : : nop ; $").problems[0].kind, "lexical")
 
     def test_type_errors_reported_but_tree_kept(self):
-        r = analyze(": :\n#ghost = 1 ;\n", typecheck=True)
+        # a call to a void function used as a value: scope-correct, but ill-typed
+        src = "#x : void #f ( ) { : : return } :\n#x = #f ( ) ;\n"
+        r = analyze(src, typecheck=True)
         self.assertTrue(r.syntax_ok)            # the tree/xml are still available
         self.assertFalse(r.ok)
-        self.assertEqual([(p.kind, p.line) for p in r.problems], [("type", 2)])
-        self.assertTrue(r.type_checked)
+        self.assertTrue(r.problems)
+        self.assertEqual({(p.kind, p.line) for p in r.problems}, {("type", 2)})
+        self.assertTrue(r.type_checked and r.scope_checked)
+
+    def test_undeclared_name_is_now_a_scope_error(self):
+        r = analyze(": :\n#ghost = 1 ;\n", typecheck=True)
+        self.assertEqual([(p.kind, p.line) for p in r.problems], [("scope", 2)])
 
     def test_type_check_is_off_by_default(self):
         r = analyze(": :\n#ghost = 1 ;\n")

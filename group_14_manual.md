@@ -5,6 +5,10 @@
 - Kundai Ndemera u23941996
 - Siyabonga Sibiya u23976072
 
+# Submission
+
+All team members have unanimously agreed to make a 'first-class' submission for maximally 6 points.
+
 # SPL Front End
 
 A lexer, parser and (optional) type analyser for the Students' Programming
@@ -52,9 +56,20 @@ On Windows you can usually also double-click `group_14_gui.py`.
    what the command line produces.
 5. **Fix and re-run.** Edit the source pane and press Run again.
 
-Tick **Also run type analysis** to run the optional type checker after a
-successful parse (the same as `--typecheck` on the command line). Type errors
-are listed with their line numbers; the syntax tree is still produced.
+The toolbar has three stage options, all ticked by default: **Scope analysis**
+(2a), **Type analysis** (2b) and **Generate code** (3a/3b). Each stage needs the
+one before it, so ticking one ticks the others it depends on. Errors are listed
+with their line numbers and the offending line is highlighted; the syntax tree
+is still produced.
+
+Extra tabs and buttons:
+
+| Where | What you get |
+|---|---|
+| **Symbol table** tab | Every renamed name: new name, original, kind, scope level, type, line |
+| **Generated C++** tab | The generated program: code-mine, then the executable `main()` |
+| **Save C++...** | Writes the generated code to a `.cpp` file (default `out.cpp`) |
+| **Compile & run** (F6) | Compiles the code with the C++ compiler on your computer (g++ / c++ / clang++), runs it, and shows what it prints in the **Program output** tab. Runs stop after 10 seconds, so an endless loop cannot hang the GUI. The button is disabled if no compiler is installed. |
 
 Good to know:
 
@@ -82,13 +97,18 @@ python group_14_cli.py [source] [-o OUTPUT] [--typecheck]
 |---|---|
 | `source` | Path to the SPL source file. Defaults to `SPL.txt` in the current directory. |
 | `-o OUTPUT`, `--output OUTPUT` | Where to write the XML. Defaults to `tree.xml`. |
-| `--typecheck` | After a successful parse, also run type analysis and report any type errors. |
+| `--scope` | Also run scope analysis (phase 2a). |
+| `--typecheck` | After a successful parse, also run type analysis and report any type errors (implies `--scope`). |
+| `--codegen` | Also generate executable C++ (phases 3a/3b); implies `--typecheck`. |
+| `-c CODE_OUTPUT`, `--code-output CODE_OUTPUT` | Where to write the generated C++. Defaults to `out.cpp`. |
 | `-h`, `--help` | Show usage and exit. |
 
 ```bash
 python group_14_cli.py                                   # read SPL.txt, write tree.xml
 python group_14_cli.py my_program.txt -o output/tree.xml # explicit input and output
 python group_14_cli.py SPL.txt --typecheck               # also run type checking
+python group_14_cli.py SPL.txt --codegen                 # also write out.cpp
+g++ out.cpp -o out && ./out                              # compile and run the SPL program
 ```
 
 **Success** looks like this:
@@ -167,8 +187,9 @@ spl_pipeline.py      lex -> parse -> XML (-> type check) as a function; used by 
 lexer/               tokenizer: SPL text -> list of tokens
 parser/              SLR(1) parser: tokens -> syntax tree (see parser/grammar.py)
 xmlwriter/           syntax tree -> tree.xml
-semantics/           optional type analysis (--typecheck), built on the
+semantics/           scope analysis (2a) and type analysis (2b), built on the
                      syntax tree via semantics/cst_to_ast.py
+codegen/             C++ code generation with inlining (3a/3b, --codegen)
 tests/               unit tests for the above, plus the pipeline and GUI tests
 SPL.txt, SPL_*.txt   example SPL programs
 ```

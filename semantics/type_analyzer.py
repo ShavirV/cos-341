@@ -1,13 +1,3 @@
-"""
-Implements the tree-crawler for type analysis.
-- Every node starts with type_of(node) == "unkown"
-- tree is visited bottom-up because every rule's precondition is that all children have been typed already
-- for each grammar rule we update the node's type. If the precondition doesn't hold that is a type error. We leave the node's type as "unknown" and move to next rule
-- the "crude" global rule is handled as a separate pass over the whole tree after the bottom-up pass. It is a separate pass because it is not a local rule and it needs to be applied to all nodes in the tree, not just the children of a node.
-
-It will not stop at the first error. It will continue and collect every violation found in one pass, mirroring behaviour of real compiler frontend. 
-"""
-
 from __future__ import annotations
 from typing import List, Optional
 
@@ -20,21 +10,33 @@ NUMERIC = "numeric"
 BOOLEAN = "boolean"
 PROCEDURE = "procedure"
 UNKNOWN = "unknown"
-ERROR = "error"       #sentinel value for type errors, used to avoid cascading errors(re-reporting ancestors) 
+ERROR = "error"       #sentinel value for type errors, used to avoid cascading errors(re-reporting ancestors)
+
+# number representation for the whole program, decided by the crude-rule scan
+INT = "int"
+FLOAT = "float"
+
+# exact wording required by the 2b spec sheet
+FLOAT_INT_CONFLICT_MSG = "A float-integer-conflict might perhaps be possible"
 
 class TypeAnalyzer:
     def __init__(self, symtab: Optional[SymbolTable] = None):
         self.symtab = symtab if symtab is not None else SymbolTable()
-        self.errors: List[SPLTypeError] = [] 
-        
+        self.errors: List[SPLTypeError] = []
+        # "int" or "float" once analyze() has run; phase 3a declares its temps with this
+        self.number_type: Optional[str] = None
+        self._arity = {}      # function sys-name -> number of parameters
+
     def analyze(self, root: Node, strict: bool = True) -> bool:
         """
         Returns True if tree is well typed (type_of(root) == "ok")
         if strict=True and errors found then it raises SPLTypeAnalisisFailed
         """
         self.errors = []
-        
-        #the crude pre-check
+        self.number_type = None
+        self._arity = {}
+
+        #pass 1: the crude pre-check (also decides int vs float)
         conflict = self.check_mod_div_conflict(root)
         if conflict is not None:
             self.errors.append(conflict)
@@ -42,8 +44,11 @@ class TypeAnalyzer:
                 raise SPLTypeAnalysisFailed(self.errors)
             root.type = ERROR
             return False
-        
-        #bottom-up type analysis
+
+        #pass 2: function names get their type from the header keyword
+        self._register_function_headers(root)
+
+        #pass 3: bottom-up type analysis
         self._visit(root)
         
         ok = (root.type ==OK)
@@ -62,41 +67,77 @@ class TypeAnalyzer:
     #global crude rule: mod/div conflict + no decimal dot under mod
     
     def check_mod_div_conflict(self, root: Node) -> Optional[SPLTypeError]:
-        has_mod = [False]
-        has_div = [False]
+        first_mod: Optional[Node] = None
+        first_div: Optional[Node] = None
         num_leaves_with_dot: List[Node] = []
-        
-        def walk(n: Node):
+
+        # iterative pre-order walk (source order), so long programs can't hit
+        # Python's recursion limit here
+        stack = [root]
+        while stack:
+            n = stack.pop()
             if n.kind == Kind.TERM_MOD:
-                has_mod[0] = True
+                first_mod = first_mod or n
             elif n.kind == Kind.TERM_DIV:
-                has_div[0] = True
+                first_div = first_div or n
             elif n.kind == Kind.NUM:
                 if n.value is not None and "." in n.value:
                     num_leaves_with_dot.append(n)
-            for c in n.children:
-                walk(c)
-        
-        walk(root)
-        
-        if has_mod[0] and has_div[0]:
+            stack.extend(reversed(n.children))
+
+        # whole numbers if mod is used (or no decimals at all), real numbers otherwise
+        if first_mod is not None:
+            self.number_type = INT
+        elif first_div is not None or num_leaves_with_dot:
+            self.number_type = FLOAT
+        else:
+            self.number_type = INT
+
+        def at(n: Node) -> str:
+            return f"line {n.line}" if n.line is not None else "unknown line"
+
+        if first_mod is not None and first_div is not None:
+            # spec wording first; the locations are extra help for the user
             return SPLTypeError(
-                "A float-integer-conflict might occur",
-                line=getattr(root, "line", None), node=root,
+                f"{FLOAT_INT_CONFLICT_MSG} "
+                f"('mod' at {at(first_mod)}, 'div' at {at(first_div)})",
+                line=first_div.line if first_div.line is not None else root.line,
+                node=root,
             )
-            
-        if has_mod[0] and num_leaves_with_dot:
+
+        if first_mod is not None and num_leaves_with_dot:
             offenders = ", ".join(
                 f"'{n.value}'" + (f" (line {n.line})" if n.line is not None else "")
                 for n in num_leaves_with_dot
             )
             return SPLTypeError(
-                f"A decimal dot is not allowed anywhere in the program when 'mod' is used, "
-                f"but found: {offenders}",
-                line=getattr(root, "line", None), node=root,
+                f"A decimal dot is not allowed anywhere in the program when 'mod' is used "
+                f"('mod' at {at(first_mod)}), but found: {offenders}",
+                line=num_leaves_with_dot[0].line, node=root,
             )
-            
+
         return None
+
+    def _register_function_headers(self, root: Node) -> None:
+        """Type every function name from its header keyword before the main walk.
+
+        Without this, a function whose body has a type error never gets its
+        name typed, so every call to it is reported again as 'undeclared'.
+        The bottom-up rules for F_TYPE still run as normal afterwards.
+        """
+        stack = [root]
+        while stack:
+            n = stack.pop()
+            if n.kind in (Kind.F_TYPE_VOID, Kind.F_TYPE_NUM):
+                count, params = 0, n.children[1]
+                while params.kind == Kind.V_DECL_CONS:
+                    count, params = count + 1, params.children[1]
+                self._arity[self._name_sys(n.children[0])] = count
+            if n.kind == Kind.F_TYPE_VOID:
+                self._set_name_type(n.children[0], PROCEDURE)
+            elif n.kind == Kind.F_TYPE_NUM:
+                self._set_name_type(n.children[0], NUMERIC)
+            stack.extend(n.children)
     
     #bottom-up dispatch
     def _visit(self, n: Node) -> None:
@@ -115,16 +156,15 @@ class TypeAnalyzer:
     # HELPERS
     #----------
         
-    _PASSTHROUGH_KINDS = frozenset({
-        "SPL_PROG", "P",
-        "V_DECL_CONS", "F_DECL_CONS", "ALGO_CONS",
-        "INSTR_PRINT", "INSTR_ASSIGN","INSTR_BRANCH", "INSTR_LOOP", "INSTR_CALL",
-        "OUTP_TERM",
-    })
-    
+    # function declarations always report, even when the fault is deeper down:
+    # "which function does this break" is useful context, not noise
+    _CONTEXT_KINDS = frozenset({Kind.F_TYPE_VOID, Kind.F_TYPE_NUM})
+
     def _fail(self, node: Node, message: str) -> None:
-        #reports a type error at `node` and marks it ERROR so ancestors know this subtree is broken
-        if node.kind in self._PASSTHROUGH_KINDS and any(c.type == ERROR for c in node.children):
+        #reports a type error at `node` and marks it ERROR so ancestors know this subtree is broken.
+        #if a child is already ERROR, that error was reported where it happened, so this node
+        #just inherits ERROR silently (every rule except the _CONTEXT_KINDS above)
+        if node.kind not in self._CONTEXT_KINDS and any(c.type == ERROR for c in node.children):
             node.type = ERROR
             return
         self.errors.append(SPLTypeError(message, line=getattr(node, "line", None), node=node))
@@ -322,7 +362,15 @@ class TypeAnalyzer:
         #CALL -> NAME ( INPUT )   if type_of(INPUT) is "ok" and type_of(NAME) =/= 'unknown: type_of(CALL) := type_of(NAME)
         name, inp = n.children
         name_type = self._get_name_type(name)
-        if inp.type == OK and name_type != UNKNOWN and name_type != ERROR:
+        expected = self._arity.get(self._name_sys(name))
+        given, args = 0, inp
+        while args.kind == Kind.INPUT_CONS:
+            given, args = given + 1, args.children[1]
+        if expected is not None and given != expected and inp.type == OK:
+            # not in the 2b sheet, but code generation cannot inline such a call
+            self._fail(n, f"Call to '{name.value}' passes {given} argument(s), "
+                          f"but the function declares {expected} parameter(s).")
+        elif inp.type == OK and name_type != UNKNOWN and name_type != ERROR:
             n.type = name_type
         else:
             bad = []
@@ -575,4 +623,3 @@ TypeAnalyzer._DISPATCH = {
     Kind.LOOP_PRE: TypeAnalyzer._r_loop_pre,
     Kind.LOOP_POST: TypeAnalyzer._r_loop_post,
 }
-    

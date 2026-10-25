@@ -102,11 +102,19 @@ def test_converter_output_has_analyzer_shape():
 
 
 def test_type_errors_from_real_source_carry_line_numbers():
-    src = ": :\n#ghost = 1 ;\n "
+    src = "#x : void #f ( ) { : : return } :\n#x = #f ( ) ;\n "
     ta = TypeAnalyzer()
     ta.analyze(convert(parse(src)), strict=False)
-    assert len(ta.errors) == 1
-    assert ta.errors[0].line == 2 and "#ghost" in ta.errors[0].message
+    assert ta.errors and all(e.line == 2 for e in ta.errors)
+    assert any("'void'" in e.message for e in ta.errors)
+
+
+def test_scope_errors_from_real_source_carry_line_numbers():
+    from semantics.scope_analyzer import ScopeAnalyzer
+    sa = ScopeAnalyzer()
+    assert not sa.analyze(convert(parse(": :\n#ghost = 1 ;\n ")))
+    assert len(sa.errors) == 1
+    assert sa.errors[0].line == 2 and "#ghost" in sa.errors[0].message
 
 
 def test_void_call_used_as_value_is_rejected():
@@ -167,5 +175,18 @@ def test_cli_lex_error_removes_stale_tree(tmp_path):
 
 
 def test_cli_type_error_exit_code(tmp_path):
-    proc, _ = _run_main(tmp_path, ": :\n#ghost = 1 ;\n ", "--typecheck")
+    src = "#x : void #f ( ) { : : return } :\n#x = #f ( ) ;\n "
+    proc, _ = _run_main(tmp_path, src, "--typecheck")
     assert proc.returncode == 1 and "TYPE ERROR (line 2)" in proc.stderr
+
+
+def test_cli_scope_error_exit_code(tmp_path):
+    for flag in ("--scope", "--typecheck"):
+        proc, _ = _run_main(tmp_path, ": :\n#ghost = 1 ;\n ", flag)
+        assert proc.returncode == 1 and "SCOPE ERROR (line 2)" in proc.stderr
+
+
+def test_cli_symtab_lists_renamed_names(tmp_path):
+    proc, _ = _run_main(tmp_path, "#x : : #x = 1 ; ", "--symtab")
+    assert proc.returncode == 0, proc.stderr
+    assert "sys1" in proc.stdout and "#x" in proc.stdout
