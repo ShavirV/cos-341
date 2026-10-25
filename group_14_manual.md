@@ -5,6 +5,10 @@
 - Kundai Ndemera u23941996
 - Siyabonga Sibiya u23976072
 
+# Submission
+
+All team members have unanimously agreed to make a 'first-class' submission for maximally 6 points.
+
 # SPL Front End
 
 A lexer, parser and (optional) type analyser for the Students' Programming
