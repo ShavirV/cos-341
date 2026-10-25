@@ -82,13 +82,18 @@ python group_14_cli.py [source] [-o OUTPUT] [--typecheck]
 |---|---|
 | `source` | Path to the SPL source file. Defaults to `SPL.txt` in the current directory. |
 | `-o OUTPUT`, `--output OUTPUT` | Where to write the XML. Defaults to `tree.xml`. |
-| `--typecheck` | After a successful parse, also run type analysis and report any type errors. |
+| `--scope` | Also run scope analysis (phase 2a). |
+| `--typecheck` | After a successful parse, also run type analysis and report any type errors (implies `--scope`). |
+| `--codegen` | Also generate executable C++ (phases 3a/3b); implies `--typecheck`. |
+| `-c CODE_OUTPUT`, `--code-output CODE_OUTPUT` | Where to write the generated C++. Defaults to `out.cpp`. |
 | `-h`, `--help` | Show usage and exit. |
 
 ```bash
 python group_14_cli.py                                   # read SPL.txt, write tree.xml
 python group_14_cli.py my_program.txt -o output/tree.xml # explicit input and output
 python group_14_cli.py SPL.txt --typecheck               # also run type checking
+python group_14_cli.py SPL.txt --codegen                 # also write out.cpp
+g++ out.cpp -o out && ./out                              # compile and run the SPL program
 ```
 
 **Success** looks like this:
@@ -167,8 +172,9 @@ spl_pipeline.py      lex -> parse -> XML (-> type check) as a function; used by 
 lexer/               tokenizer: SPL text -> list of tokens
 parser/              SLR(1) parser: tokens -> syntax tree (see parser/grammar.py)
 xmlwriter/           syntax tree -> tree.xml
-semantics/           optional type analysis (--typecheck), built on the
+semantics/           scope analysis (2a) and type analysis (2b), built on the
                      syntax tree via semantics/cst_to_ast.py
+codegen/             C++ code generation with inlining (3a/3b, --codegen)
 tests/               unit tests for the above, plus the pipeline and GUI tests
 SPL.txt, SPL_*.txt   example SPL programs
 ```

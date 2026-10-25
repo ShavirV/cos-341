@@ -175,5 +175,91 @@ class TestRunsCorrectly(unittest.TestCase):
         self.assertEqual(run_cpp(gen(FUNCTIONS)), "number:10result:10")
 
 
+NESTED_SAME_CALL = """#r :
+num #sub3 ( #a #b #c ) {
+:
+:
+return ( sub ( #a sub ( #b #c ) ) )
+}
+:
+#r = #sub3 ( 100 #sub3 ( 50 20 5 ) 1 ) ;
+print ( #r ) ;
+"""
+
+LABELS_TWICE = """#a #z :
+num #count ( #n ) {
+#s :
+:
+#s = 0 ;
+while larger ( #n 0 ) do { #n = sub ( #n 1 ) ; #s = add ( #s 2 ) ; } ;
+return ( #s )
+}
+:
+#a = #count ( 3 ) ;
+#z = #count ( #a ) ;
+print ( #z ) ;
+"""
+
+SUBFUNCTION = """#r :
+num #f ( #x ) {
+:
+num #g ( #y ) {
+:
+:
+return ( mul ( #y 2 ) )
+}
+:
+return ( add ( #g ( #x ) 1 ) )
+}
+:
+#r = add ( #f ( 4 ) #f ( 5 ) ) ;
+print ( #r ) ;
+"""
+
+
+class TestSpec3b(unittest.TestCase):
+    def test_program_layout(self):
+        code = gen(FUNCTIONS)
+        order = [code.index(m) for m in (
+            "begin of the non-executable code-mine", "end of the non-executable code-mine",
+            "begin of executable C code", "#include <iostream>", "int main()",
+            "return 0;", "end of executable C")]
+        self.assertEqual(order, sorted(order))
+
+    def test_code_mine_is_one_well_formed_comment(self):
+        code = gen(FUNCTIONS)
+        mine = code[code.index("/*\n"):code.index("/* end of the non-executable")]
+        self.assertEqual(mine.count("/*"), 1)
+        self.assertEqual(mine.count("*/"), 1)
+
+    @unittest.skipUnless(HAS_GPP, "g++ not installed")
+    def test_nested_call_of_same_function_in_arguments(self):
+        self.assertEqual(run_cpp(gen(NESTED_SAME_CALL)), "66")
+
+    @unittest.skipUnless(HAS_GPP, "g++ not installed")
+    def test_labels_renamed_for_each_inlining(self):
+        code = gen(LABELS_TWICE)
+        labels = re.findall(r"^(L\d+):", code, re.MULTILINE)
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(run_cpp(code), "12")
+
+    @unittest.skipUnless(HAS_GPP, "g++ not installed")
+    def test_subfunction_inlined_inside_function(self):
+        self.assertEqual(run_cpp(gen(SUBFUNCTION)), "20")
+
+    def test_wrong_argument_count_is_a_type_error(self):
+        from spl_pipeline import analyze
+        r = analyze("#x :\nnum #f ( #a ) { : : return ( #a ) }\n:\n#x = #f ( 1 2 ) ;\n", codegen=True)
+        self.assertEqual([p.kind for p in r.problems], ["type"])
+        self.assertEqual(r.code, "")
+
+    def test_pipeline_generates_code_and_long_programs_work(self):
+        from spl_pipeline import analyze
+        r = analyze("#x :\n:\n" + "#x = add ( #x 1 ) ;\n" * 3000, codegen=True)
+        self.assertEqual(r.problems, [])
+        self.assertIn("int main()", r.code)
+
+
+
 if __name__ == "__main__":
     unittest.main()
