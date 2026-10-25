@@ -1,7 +1,7 @@
 """
 SPL front end.
 
-    python group_14_cli.py [SPL.txt] [-o tree.xml] [--scope] [--typecheck] [--symtab]
+    python group_14_cli.py [SPL.txt] [-o tree.xml] [--scope] [--typecheck] [--symtab] [--codegen] [-c OUT.cpp]
 
 1. lex  SPL.txt            -> tokens          (LexError on bad tokens)
 2. parse tokens            -> syntax tree     (SyntaxError_ on bad syntax)
@@ -11,12 +11,17 @@ SPL front end.
 5. --typecheck (optional)  -> type analysis   (phase 2b; implies --scope, and is skipped
                                                if scope errors were found)
 
+6. --codegen   (optional)  -> code generation (phases 3a/3b: C++ with inlined functions,
+                                               written to out.cpp; implies --typecheck)
+
 Exit code: 0 = success, 1 = lexical/syntax/type error, 2 = file problem.
 """
 
 import argparse
 import os
 import sys
+
+sys.setrecursionlimit(max(sys.getrecursionlimit(), 20000))
 
 from lexer.lexer import tokenize, LexError
 from parser.parser import parse_tokens, SyntaxError_
@@ -34,7 +39,13 @@ def main(argv=None) -> int:
                     help="also run type analysis after parsing (implies --scope)")
     ap.add_argument("--symtab", action="store_true",
                     help="print the symbol table (internal names) after successful analysis (implies --scope)")
+    ap.add_argument("--codegen", action="store_true",
+                    help="also generate executable C++ (implies --typecheck)")
+    ap.add_argument("-c", "--code-output", default="out.cpp",
+                    help="where to write the generated code (default: out.cpp)")
     args = ap.parse_args(argv)
+    if args.codegen:
+        args.typecheck = True
 
     try:
         with open(args.source, encoding="ascii", newline="") as f:
@@ -79,6 +90,18 @@ def main(argv=None) -> int:
                     print(err, file=sys.stderr)
                 return 1
             print("Type analysis OK.")
+
+        if args.codegen:
+            from codegen.codegen import generate_program
+
+            try:
+                code = generate_program(ast, symtab, analyzer.number_type)
+            except (ValueError, NotImplementedError) as e:
+                print(f"Code generation error: {e}", file=sys.stderr)
+                return 1
+            with open(args.code_output, "w", encoding="ascii", newline="\n") as f:
+                f.write(code)
+            print(f"Code generation OK. C++ written to {args.code_output}")
 
         if args.symtab:
             print(f"{'new name':<10}{'original':<14}{'kind':<6}{'level':<7}{'type':<11}line")

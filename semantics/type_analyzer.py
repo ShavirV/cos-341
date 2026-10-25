@@ -25,7 +25,8 @@ class TypeAnalyzer:
         self.errors: List[SPLTypeError] = []
         # "int" or "float" once analyze() has run; phase 3a declares its temps with this
         self.number_type: Optional[str] = None
-        
+        self._arity = {}      # function sys-name -> number of parameters
+
     def analyze(self, root: Node, strict: bool = True) -> bool:
         """
         Returns True if tree is well typed (type_of(root) == "ok")
@@ -33,6 +34,7 @@ class TypeAnalyzer:
         """
         self.errors = []
         self.number_type = None
+        self._arity = {}
 
         #pass 1: the crude pre-check (also decides int vs float)
         conflict = self.check_mod_div_conflict(root)
@@ -126,6 +128,11 @@ class TypeAnalyzer:
         stack = [root]
         while stack:
             n = stack.pop()
+            if n.kind in (Kind.F_TYPE_VOID, Kind.F_TYPE_NUM):
+                count, params = 0, n.children[1]
+                while params.kind == Kind.V_DECL_CONS:
+                    count, params = count + 1, params.children[1]
+                self._arity[self._name_sys(n.children[0])] = count
             if n.kind == Kind.F_TYPE_VOID:
                 self._set_name_type(n.children[0], PROCEDURE)
             elif n.kind == Kind.F_TYPE_NUM:
@@ -355,7 +362,15 @@ class TypeAnalyzer:
         #CALL -> NAME ( INPUT )   if type_of(INPUT) is "ok" and type_of(NAME) =/= 'unknown: type_of(CALL) := type_of(NAME)
         name, inp = n.children
         name_type = self._get_name_type(name)
-        if inp.type == OK and name_type != UNKNOWN and name_type != ERROR:
+        expected = self._arity.get(self._name_sys(name))
+        given, args = 0, inp
+        while args.kind == Kind.INPUT_CONS:
+            given, args = given + 1, args.children[1]
+        if expected is not None and given != expected and inp.type == OK:
+            # not in the 2b sheet, but code generation cannot inline such a call
+            self._fail(n, f"Call to '{name.value}' passes {given} argument(s), "
+                          f"but the function declares {expected} parameter(s).")
+        elif inp.type == OK and name_type != UNKNOWN and name_type != ERROR:
             n.type = name_type
         else:
             bad = []

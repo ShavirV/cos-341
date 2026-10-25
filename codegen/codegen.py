@@ -1,3 +1,5 @@
+import re
+
 from semantics.ast_nodes import Kind
 
 BINARY_OPS = {
@@ -15,31 +17,74 @@ COMPARE_OPS = {
 }
 
 def generate_program(ast, symtab, number_type):
-    """Return generated C++ source for an SPL program."""
+    """Return generated C++ source for an SPL program (spec parts 3a + 3b).
+
+    Layout:  non-executable code-mine (one /* ... */ comment holding every
+    function body, with their own sub-calls already inlined), then the
+    executable main(): variable declarations, translated ALGO, return 0.
+    """
+    number_type = number_type or "int"
     gen = CodeGenerator(number_type)
-    program = ast.children[0]
-    gen.set_functions(program.children[1])
-    algo = program.children[2]                # P -> (V_DECL, F_DECL, ALGO)
+    program = ast.children[0] if ast.kind == Kind.SPL_PROG else ast
+    v_decl, f_decl, algo = program.children        # P -> (V_DECL, F_DECL, ALGO)
+    gen.register_functions(f_decl)
+
+    mine = gen.trans_code_mine(f_decl)
     body = gen.trans_algo(algo)
-    decls = "\n".join(
-        f"{number_type} {name};"
-        for name, info in symtab.dump().items() if info.get("kind") == "var"
+
+    entries = sorted(
+        ((name, info) for name, info in symtab.dump().items() if info.get("kind") == "var"),
+        key=lambda kv: _sys_number(kv[0]),
     )
-    return f"#include <iostream>\nint main() {{\n{decls}\n{body}\nreturn 0;\n}}\n"
+    main_vars = [n for n, i in entries if i.get("scope_level", 0) == 0]
+    inline_vars = [n for n, i in entries if i.get("scope_level", 0) != 0]
+    lines = [
+        "/* begin of the non-executable code-mine for later inlining */",
+        mine,
+        "/* end of the non-executable code-mine */",
+        "/* begin of executable C code */",
+        "#include <iostream>",
+        "int main()",
+        "{",
+    ]
+    lines += [f"{number_type} {n};" for n in main_vars]
+    if inline_vars:
+        lines.append("/* parameters and locals of the inlined functions */")
+        lines += [f"{number_type} {n};" for n in inline_vars]
+    lines += [body, "return 0;", "} /* end of executable C */", ""]
+    return "\n".join(lines)
+
+
+def _sys_number(name):
+    m = re.search(r"(\d+)$", name)
+    return int(m.group(1)) if m else 0
+
+
+def _to_mine_text(code):
+    """Make generated code safe to sit inside one big /* ... */ comment:
+    C comments do not nest, so inner /* x */ become // x, and any stray
+    comment terminator is defused."""
+    code = re.sub(r"/\*(.*?)\*/", r"//\1", code)
+    return code.replace("*/", "* /")
+
 
 class CodeGenerator:
     def __init__(self, number_type):
         self.typ = number_type      # "int" or "float", from the type analyser
         self._var_count = 0
         self._label_count = 0
-        self._functions = {}
+        self._functions = {}        # internal function name -> F_TYPE node
 
-    def set_functions(self, f_decl):
-        """Set the functions visible in the current block."""
-        self._functions = {
-            function.children[0].sym_id: function
-            for function in self._list_items(f_decl, Kind.F_DECL_CONS)
-        }
+    def register_functions(self, f_decl):
+        """Remember every function of the program, however deeply nested.
+        Internal names are unique program-wide (phase 2a), so one flat map
+        is enough and no scope juggling is needed while inlining."""
+        stack = [f_decl]
+        while stack:
+            node = stack.pop()
+            for function in self._list_items(node, Kind.F_DECL_CONS):
+                self._functions[function.children[0].sym_id] = function
+                stack.append(function.children[2].children[1])   # body P -> F_DECL
 
     @staticmethod
     def _list_items(node, cons_kind):
@@ -78,7 +123,7 @@ class CodeGenerator:
         if k == Kind.INSTR_NOP:
             return "/* nop */"
         if k == Kind.INSTR_COMMENT:
-            return f"/* {self._string_text(node)} */"
+            return f"/* {self._string_text(node).replace('*/', '* /')} */"
         if k == Kind.INSTR_ASSIGN:
             return self.trans_assign(node.children[0])
         if k == Kind.INSTR_CALL:
@@ -103,38 +148,69 @@ class CodeGenerator:
         return "\n".join([f"{self.typ} {v};", code, f"{name.sym_id} = {v};"])
 
     def trans_call(self, node, result=None):
-        """Inline a function call at its call site."""
-        function = self._functions.get(node.children[0].sym_id)
+        """Inline a function call at its call site (spec 3b)."""
+        name = node.children[0]
+        function = self._functions.get(name.sym_id)
         if function is None:
-            raise ValueError(f"function definition not found for {node.children[0].value}")
+            raise ValueError(f"function definition not found for {name.value}")
 
         params = self._list_items(function.children[1], Kind.V_DECL_CONS)
         args = self._list_items(node.children[1], Kind.INPUT_CONS)
         if len(params) != len(args):
             raise ValueError(
-                f"function {node.children[0].value} expects {len(params)} arguments, "
-                f"got {len(args)}"
+                f"function {name.value} expects {len(params)} arguments, got {len(args)}"
             )
+        if result is not None and function.kind != Kind.F_TYPE_NUM:
+            raise ValueError(f"void function {name.value} used as a value")
 
         parts = ["/* call */"]
-        for param, arg in zip(params, args):
-            value = self.new_var()
-            parts.extend([
-                f"{self.typ} {value};",
-                self.trans_term(arg, value),
-                f"{param.sym_id} = {value};",
-            ])
+        # 1st: evaluate ALL arguments into fresh variables p1..pN.  Only then
+        # copy them into the parameters; otherwise an argument that itself
+        # calls the same function would overwrite parameters already set.
+        captured = []
+        for arg in args:
+            p = self.new_var()
+            captured.append(p)
+            parts.extend([f"{self.typ} {p};", self.trans_term(arg, p)])
+        for param, p in zip(params, captured):
+            parts.append(f"{param.sym_id} = {p};")
 
-        body = function.children[2]
-        previous_functions = self._functions
-        self.set_functions(body.children[1])
-        parts.append(self.trans_algo(body.children[2]))
+        # 2nd: the function body (a fresh copy, so labels/temps stay unique)
+        body, r = self.inline_body(function)
+        parts.append(body)
+        # 3rd: connect the callee's return variable with the caller's variable
         if result is not None:
-            if function.kind != Kind.F_TYPE_NUM:
-                raise ValueError(f"void function {node.children[0].value} used as a value")
-            parts.append(self.trans_term(function.children[3], result))
-        self._functions = previous_functions
+            parts.append(f"{result} = {r};")
         return "\n".join(parts)
+
+    def inline_body(self, function):
+        """Code of a function body (+ evaluation of its return term).
+        Returns (code, return_variable); return_variable is None for void."""
+        body = function.children[2]            # P
+        code = self.trans_algo(body.children[2])
+        if function.kind != Kind.F_TYPE_NUM:
+            return code, None
+        r = function.children[0].sym_id + self.new_var()      # r = f ++ n
+        ret = self.trans_term(function.children[3], r)
+        return "\n".join([code, f"{self.typ} {r};", ret]), r
+
+    def trans_code_mine(self, f_decl):
+        """Non-executable code for every function (spec 3b: F_TYPE)."""
+        out = []
+        for function in self._functions.values():
+            name = function.children[0]
+            kind = "Function" if function.kind == Kind.F_TYPE_NUM else "void-procedure"
+            params = self._list_items(function.children[1], Kind.V_DECL_CONS)
+            code, r = self.inline_body(function)
+            lines = [f"begin of code-mine for {kind} {name.sym_id} ({name.value})",
+                     "Parameters for inlining:"]
+            lines += [f"{self.typ} {p.sym_id};" for p in params] or [" "]
+            lines += ["Body of the procedure:", code,
+                      f"end of code-mine for {kind} {name.sym_id}"]
+            if r is not None:
+                lines.append(f"The result is found in the return value {r}")
+            out.append(_to_mine_text("\n".join(lines)))
+        return "/*\n" + "\n".join(out) + "\n*/" if out else "/* (no functions) */"
 
     # ---------- TERM ----------
 
@@ -160,11 +236,8 @@ class CodeGenerator:
             x = self.new_var()
             code = self.trans_term(node.children[0], x)
             return "\n".join([f"{self.typ} {x};", code, f"{result} = -{x};"])
-        raise NotImplementedError(f"not implemented yet: {k}")   # TERM_CALL is 3b
+        raise NotImplementedError(f"unsupported TERM: {k}")
 
-
-        def label(self, name, comment=""):
-            return f"{name}: ; /* {comment} */" if comment else f"{name}: ;"
 
     # ---------- BOOL ----------
     # Control always ends at exactly one of the two labels.

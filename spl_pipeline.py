@@ -6,6 +6,7 @@ optionally scope analysis (phase 2a) and type analysis (phase 2b)) but returns a
 exiting, so the GUI (spl_gui.py) and the tests can use it without a display.
 """
 
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -13,6 +14,11 @@ from lexer.lexer import tokenize, LexError
 from parser.parser import parse_tokens, SyntaxError_
 from xmlwriter.node import Node, NodeIDGenerator
 from xmlwriter.xmlwriter import tree_to_xml
+
+
+# the tree walks are recursive (one level per instruction), so long programs
+# need more head-room than Python's default limit of 1000 frames
+sys.setrecursionlimit(max(sys.getrecursionlimit(), 20000))
 
 
 @dataclass
@@ -32,6 +38,9 @@ class Result:
     type_checked: bool = False    # was type analysis requested (and reached)?
     scope_checked: bool = False   # was scope analysis requested (and reached)?
     symtab: Optional[object] = None   # SymbolTable (renamed names), set if scope analysis ran
+    ast: Optional[object] = None      # abstract tree (names renamed), set if scope analysis ran
+    number_type: Optional[str] = None # "int" / "float", set if type analysis ran
+    code: str = ""                    # generated C++ (only if analyze(..., codegen=True) succeeded)
 
     @property
     def syntax_ok(self) -> bool:
@@ -43,10 +52,14 @@ class Result:
         return self.syntax_ok and not self.problems
 
 
-def analyze(text: str, typecheck: bool = False, scopecheck: bool = False) -> Result:
+def analyze(text: str, typecheck: bool = False, scopecheck: bool = False,
+            codegen: bool = False) -> Result:
     """typecheck=True implies scopecheck: type analysis needs the unique internal
-    names from phase 2a. If scope errors are found, type analysis is skipped
+    names from phase 2a. codegen=True implies both and, if the program is
+    error-free, also fills Result.code (phases 3a/3b). If scope errors are found, type analysis is skipped
     (it would only report follow-up errors for the same undeclared names)."""
+    if codegen:
+        typecheck = True
     result = Result()
     NodeIDGenerator.reset()
 
@@ -87,6 +100,7 @@ def analyze(text: str, typecheck: bool = False, scopecheck: bool = False) -> Res
             sa = ScopeAnalyzer(symtab)
             scope_ok = sa.analyze(ast)
             result.symtab = symtab
+            result.ast = ast
             for err in sa.errors:
                 result.problems.append(Problem("scope", err.message, err.line))
 
@@ -98,6 +112,12 @@ def analyze(text: str, typecheck: bool = False, scopecheck: bool = False) -> Res
                 if not analyzer.analyze(ast, strict=False):
                     for err in analyzer.errors:
                         result.problems.append(Problem("type", err.message, err.line))
+                else:
+                    result.number_type = analyzer.number_type
+                    if codegen:
+                        from codegen.codegen import generate_program
+
+                        result.code = generate_program(ast, symtab, analyzer.number_type)
         except RecursionError:
             result.problems.append(
                 Problem("internal", "Program is too long/deeply nested for semantic analysis."))
