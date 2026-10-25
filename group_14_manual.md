@@ -52,9 +52,20 @@ On Windows you can usually also double-click `group_14_gui.py`.
    what the command line produces.
 5. **Fix and re-run.** Edit the source pane and press Run again.
 
-Tick **Also run type analysis** to run the optional type checker after a
-successful parse (the same as `--typecheck` on the command line). Type errors
-are listed with their line numbers; the syntax tree is still produced.
+The toolbar has three stage options, all ticked by default: **Scope analysis**
+(2a), **Type analysis** (2b) and **Generate code** (3a/3b). Each stage needs the
+one before it, so ticking one ticks the others it depends on. Errors are listed
+with their line numbers and the offending line is highlighted; the syntax tree
+is still produced.
+
+Extra tabs and buttons:
+
+| Where | What you get |
+|---|---|
+| **Symbol table** tab | Every renamed name: new name, original, kind, scope level, type, line |
+| **Generated C++** tab | The generated program: code-mine, then the executable `main()` |
+| **Save C++...** | Writes the generated code to a `.cpp` file (default `out.cpp`) |
+| **Compile & run** (F6) | Compiles the code with the C++ compiler on your computer (g++ / c++ / clang++), runs it, and shows what it prints in the **Program output** tab. Runs stop after 10 seconds, so an endless loop cannot hang the GUI. The button is disabled if no compiler is installed. |
 
 Good to know:
 

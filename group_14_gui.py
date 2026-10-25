@@ -2,18 +2,24 @@
 """
 SPL Front End - a small desktop GUI.
 
-    python spl_gui.py [program.txt]
+    python group_14_gui.py [program.txt]
 
 Open (or type/paste) an SPL program and press Run. The program is lexed and
 parsed exactly as in main.py; on success the syntax tree is shown (as a tree
 view and as the raw tree.xml text) and can be saved as tree.xml. On failure
 the error message is shown and the offending line is highlighted. Tick
-"Also run type analysis" to run the optional type checker as well.
+"Also run type analysis" to run the optional type checker as well, and
+"Also generate code" to run the whole compiler (scope analysis, type analysis,
+code generation). Generated C++ can be saved or compiled and run from the GUI.
 
 Only the standard library is used (tkinter ships with Python).
 """
 
 import os
+import shutil
+import subprocess
+import tempfile
+import threading
 import sys
 
 import tkinter as tk
@@ -59,6 +65,8 @@ class App:
     def __init__(self, root: tk.Tk, path: str = None):
         self.root = root
         self.result = None
+        self.run_token = 0
+        self.compiler = next((c for c in ("g++", "c++", "clang++") if shutil.which(c)), None)
         root.title("SPL Front End")
         root.geometry("1150x740")
         root.minsize(820, 520)
@@ -69,7 +77,7 @@ class App:
         if path and self.load_file(path):
             self.run()
         else:
-            self.set_source(SAMPLE, "sample program - use Open to load your own")
+            self.set_source(SAMPLE, "sample program")
             self.run()
 
     # UI
@@ -89,15 +97,24 @@ class App:
         ttk.Button(bar, text="Open SPL file...", command=self.open_file).pack(side="left")
         ttk.Button(bar, text="\u25b6  Run", style="Run.TButton",
                    command=self.run).pack(side="left", padx=(8, 0))
-        self.scope_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bar, text="Also run scope analysis",
-                        variable=self.scope_var).pack(side="left", padx=(12, 0))
-        self.typecheck_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bar, text="Also run type analysis (includes scope)",
-                        variable=self.typecheck_var).pack(side="left", padx=12)
+        self.scope_var = tk.BooleanVar(value=True)
+        self.typecheck_var = tk.BooleanVar(value=True)
+        self.codegen_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bar, text="Scope analysis", variable=self.scope_var,
+                        command=lambda: self._tick("scope")).pack(side="left", padx=(12, 0))
+        ttk.Checkbutton(bar, text="Type analysis", variable=self.typecheck_var,
+                        command=lambda: self._tick("type")).pack(side="left", padx=8)
+        ttk.Checkbutton(bar, text="Generate code", variable=self.codegen_var,
+                        command=lambda: self._tick("code")).pack(side="left", padx=(0, 12))
         self.save_btn = ttk.Button(bar, text="Save tree.xml...", command=self.save_xml,
                                    state="disabled")
         self.save_btn.pack(side="left")
+        self.save_code_btn = ttk.Button(bar, text="Save C++...", command=self.save_code,
+                                        state="disabled")
+        self.save_code_btn.pack(side="left", padx=(6, 0))
+        self.exec_btn = ttk.Button(bar, text="Compile & run", command=self.compile_and_run,
+                                   state="disabled")
+        self.exec_btn.pack(side="left", padx=(6, 0))
         self.source_label = tk.StringVar()
         ttk.Label(bar, textvariable=self.source_label, foreground="#555555").pack(side="right")
 
@@ -106,7 +123,7 @@ class App:
         status = ttk.Frame(root, padding=(8, 2))
         status.pack(side="bottom", fill="x")
         ttk.Label(status, textvariable=self.cursor_label).pack(side="left")
-        ttk.Label(status, text="Ctrl+O open    F5 / Ctrl+Enter run    Ctrl+S save tree.xml",
+        ttk.Label(status, text="Ctrl+O open    F5 / Ctrl+Enter run    Ctrl+S save tree.xml    F6 compile & run",
                   foreground="#777777").pack(side="right")
 
         outer = ttk.PanedWindow(root, orient="vertical")
@@ -169,6 +186,26 @@ class App:
         xml_tab.rowconfigure(0, weight=1)
         xml_tab.columnconfigure(0, weight=1)
 
+        sym_tab = ttk.Frame(self.tabs, padding=4)
+        self.tabs.add(sym_tab, text="Symbol table")
+        cols = ("orig", "kind", "level", "type", "line")
+        self.sym = ttk.Treeview(sym_tab, columns=cols, selectmode="browse")
+        self.sym.heading("#0", text="new name")
+        for c, t, w in (("orig", "original", 90), ("kind", "kind", 50), ("level", "level", 50),
+                        ("type", "type", 80), ("line", "line", 50)):
+            self.sym.heading(c, text=t)
+            self.sym.column(c, width=w, anchor="w")
+        self.sym.column("#0", width=90)
+        sys_ = ttk.Scrollbar(sym_tab, orient="vertical", command=self.sym.yview)
+        self.sym.configure(yscrollcommand=sys_.set)
+        self.sym.grid(row=0, column=0, sticky="nsew")
+        sys_.grid(row=0, column=1, sticky="ns")
+        sym_tab.rowconfigure(0, weight=1)
+        sym_tab.columnconfigure(0, weight=1)
+
+        self.code_text = self._text_tab("Generated C++")
+        self.out_text = self._text_tab("Program output")
+
         # --- messages
         msg_frame = ttk.LabelFrame(outer, text="Result", padding=4)
         outer.add(msg_frame, weight=1)
@@ -183,6 +220,36 @@ class App:
         self.msg.tag_configure("err", foreground="#b42318")
         self.msg.tag_configure("info", foreground="#444444")
 
+    def _text_tab(self, title):
+        frame = ttk.Frame(self.tabs, padding=4)
+        self.tabs.add(frame, text=title)
+        text = tk.Text(frame, wrap="none", font=self._mono, state="disabled", width=40, height=10)
+        ys = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        xs = ttk.Scrollbar(frame, orient="horizontal", command=text.xview)
+        text.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        text.grid(row=0, column=0, sticky="nsew")
+        ys.grid(row=0, column=1, sticky="ns")
+        xs.grid(row=1, column=0, sticky="ew")
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        return text
+
+    def _tick(self, which):
+        """Keep the stages consistent: code needs type needs scope."""
+        if which == "code" and self.codegen_var.get():
+            self.typecheck_var.set(True)
+        if which == "type" and self.typecheck_var.get():
+            self.scope_var.set(True)
+        if which == "type" and not self.typecheck_var.get():
+            self.codegen_var.set(False)
+        if which == "scope" and not self.scope_var.get():
+            self.typecheck_var.set(False)
+            self.codegen_var.set(False)
+        if self.codegen_var.get():
+            self.typecheck_var.set(True)
+        if self.typecheck_var.get():
+            self.scope_var.set(True)
+
     def _bind_keys(self):
         def brk(fn):
             def handler(event=None):
@@ -194,6 +261,7 @@ class App:
             widget.bind("<Control-Return>", brk(self.run))
             widget.bind("<Control-o>", brk(self.open_file))
             widget.bind("<Control-s>", brk(self.save_xml))
+            widget.bind("<F6>", brk(self.compile_and_run))
         # SPL only allows space/newline between tokens, so a real tab character would be a
         # lexical error; make the Tab key type spaces instead
         self.editor.bind("<Tab>", lambda e: (self.editor.insert("insert", "    "), "break")[1])
@@ -247,7 +315,8 @@ class App:
             self._show([("Nothing to run - open a file or type an SPL program first.\n", "info")])
             return
         self.result = analyze(text, typecheck=self.typecheck_var.get(),
-                              scopecheck=self.scope_var.get())
+                              scopecheck=self.scope_var.get(),
+                              codegen=self.codegen_var.get())
         self._render(self.result)
 
     def _clear_results(self):
@@ -256,7 +325,13 @@ class App:
         self.tree.delete(*self.tree.get_children())
         self._set_text(self.xml_text, "")
         self._show([])
+        self.run_token += 1                    # a still-running program must not report back
+        self.sym.delete(*self.sym.get_children())
+        self._set_text(self.code_text, "")
+        self._set_text(self.out_text, "")
         self.save_btn.configure(state="disabled")
+        self.save_code_btn.configure(state="disabled")
+        self.exec_btn.configure(state="disabled")
 
     def _render(self, res):
         self._clear_results()
@@ -273,7 +348,19 @@ class App:
             if res.scope_checked and not any(p.kind == "scope" for p in res.problems):
                 parts.append(("\u2714 Scope analysis OK.\n", "ok"))
             if res.type_checked and not res.problems:
-                parts.append(("\u2714 Type analysis OK.\n", "ok"))
+                parts.append(("\u2714 Type analysis OK "
+                              f"(numbers are {res.number_type}).\n", "ok"))
+            if res.code:
+                parts.append(("\u2714 Code generation OK - see the \"Generated C++\" tab.\n", "ok"))
+                self._set_text(self.code_text, res.code)
+                self.save_code_btn.configure(state="normal")
+                if self.compiler:
+                    self.exec_btn.configure(state="normal")
+                else:
+                    parts.append(("No C++ compiler (g++) found on this computer, so "
+                                  "\"Compile & run\" is unavailable; you can still save the C++.\n",
+                                  "info"))
+            self._fill_symtab(res)
         else:
             self.tree.insert("", "end", text="(no syntax tree - fix the error below)", tags=("empty",))
 
@@ -331,6 +418,18 @@ class App:
                 f"... showing the first {shown} of {res.node_count} nodes; "
                 f"see the tree.xml tab for the complete tree"))
 
+    def _fill_symtab(self, res):
+        if res.symtab is None:
+            return
+        entries = res.symtab.dump().items()
+        def num(kv):
+            digits = "".join(ch for ch in kv[0] if ch.isdigit())
+            return int(digits) if digits else 0
+        for name, e in sorted(entries, key=num):
+            self.sym.insert("", "end", text=name, values=(
+                e.get("orig_name") or "", e.get("kind") or "", e.get("scope_level", ""),
+                e.get("type") or "", e.get("line") or ""))
+
     def _set_open(self, is_open: bool):
         stack = list(self.tree.get_children())
         while stack:
@@ -377,6 +476,77 @@ class App:
             messagebox.showerror("Cannot save file", f"Could not write {path}:\n{e}")
             return
         self._append_message(f"Saved syntax tree to {path}\n", "info")
+
+
+    def save_code(self):
+        if not (self.result and self.result.code):
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save generated C++", defaultextension=".cpp", initialfile="out.cpp",
+            filetypes=[("C++ files", "*.cpp"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="ascii", newline="\n") as f:
+                f.write(self.result.code)
+        except OSError as e:
+            messagebox.showerror("Cannot save file", f"Could not write {path}:\n{e}")
+            return
+        self._append_message(f"Saved generated C++ to {path}\n", "info")
+
+    # ------------------------------------------------------- compile & run
+    def compile_and_run(self):
+        if not (self.result and self.result.code and self.compiler):
+            return
+        self.exec_btn.configure(state="disabled")
+        self._set_text(self.out_text, "Compiling and running...\n")
+        self.tabs.select(self.out_text.master)
+        token, code, compiler = self.run_token, self.result.code, self.compiler
+
+        def work():
+            try:
+                with tempfile.TemporaryDirectory() as d:
+                    src, exe = os.path.join(d, "prog.cpp"), os.path.join(d, "prog.exe")
+                    with open(src, "w", encoding="ascii", newline="\n") as f:
+                        f.write(code)
+                    cc = subprocess.run([compiler, src, "-o", exe], capture_output=True,
+                                        text=True, timeout=60)
+                    if cc.returncode != 0:
+                        out, tag = "C++ compile error:\n" + cc.stderr, "err"
+                    else:
+                        try:
+                            r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
+                            out = r.stdout + (f"\n[exit code {r.returncode}]" if r.returncode else "")
+                            if not r.stdout:
+                                out = "(the program printed nothing)" + out
+                        except subprocess.TimeoutExpired:
+                            out, tag = "Stopped: the program ran for more than 10 seconds " \
+                                       "(endless loop?).", "err"
+                        else:
+                            tag = "ok"
+            except Exception as e:                     # never leave the button disabled
+                out, tag = f"Could not run the program: {e}", "err"
+            box.append((out, tag))                     # main thread picks this up
+
+        box = []
+
+        def poll():
+            if not box:
+                self.root.after(100, poll)
+                return
+            done(*box[0])
+
+        def done(out, tag):
+            if token != self.run_token:
+                return                                 # source was re-run meanwhile
+            self._set_text(self.out_text, out)
+            self.exec_btn.configure(state="normal")
+            self._append_message("Program finished - see the \"Program output\" tab.\n"
+                                 if tag == "ok" else "Program did not run - see the "
+                                 "\"Program output\" tab.\n", "info" if tag == "ok" else "err")
+
+        threading.Thread(target=work, daemon=True).start()
+        self.root.after(100, poll)
 
 
 def main(argv=None):
